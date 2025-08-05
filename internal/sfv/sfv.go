@@ -122,7 +122,7 @@ func (p *parseContext) parseList() (*List, error) {
 		}
 
 		// Consume comma; if not comma, fail parsing
-		if p.current() != ',' {
+		if p.current() != tokens.Comma {
 			return nil, fmt.Errorf("sfv: parse list: expected comma, got '%c'", p.current())
 		}
 		p.advance() // consume comma
@@ -199,8 +199,112 @@ func (p *parseContext) parseInnerList() (*List, error) {
 	return nil, fmt.Errorf("sfv: parse inner list: unexpected end of input, expected closing paren")
 }
 
+// parseKey implements the Key parsing algorithm from RFC 9651 Section 4.2.3.3
+func (p *parseContext) parseKey() (string, error) {
+	// 1. If the first character of input_string is not lcalpha or "*", fail parsing.
+	if p.eof() {
+		return "", fmt.Errorf("sfv: unexpected end of input while parsing key")
+	}
+
+	c := p.current()
+	if !isLowerAlpha(c) && c != tokens.Asterisk {
+		return "", fmt.Errorf("sfv: key must start with lowercase letter or asterisk, got '%c'", c)
+	}
+
+	// 2. Let output_string be an empty string.
+	var sb strings.Builder
+
+	// 3. While input_string is not empty:
+	for !p.eof() {
+		c := p.current()
+
+		// 3.1. If the first character of input_string is not one of lcalpha, DIGIT, "_", "-", ".", or "*", return output_string.
+		if !isLowerAlpha(c) && !isDigit(c) && c != tokens.Underscore && c != tokens.Dash && c != tokens.Period && c != tokens.Asterisk {
+			break
+		}
+
+		// 3.2. Let char be the result of consuming the first character of input_string.
+		p.advance()
+
+		// 3.3. Append char to output_string.
+		sb.WriteByte(c)
+	}
+
+	// 4. Return output_string.
+	result := sb.String()
+	if result == "" {
+		return "", fmt.Errorf("sfv: empty key")
+	}
+	return result, nil
+}
+
+func isLowerAlpha(c byte) bool {
+	return c >= 'a' && c <= 'z'
+}
+
 func (p *parseContext) parseParameters() (*Parameters, error) {
-	return &Parameters{}, nil // TODO: implement parameter parsing
+	// RFC 9651 Section 4.2.3.2: Parsing Parameters
+	var keys []string
+	var values map[string]Value
+
+	for !p.eof() {
+		// 1. If the first character of input_string is not ";", exit the loop.
+		if p.current() != tokens.Semicolon {
+			break
+		}
+
+		// 2. Consume the ";" character from the beginning of input_string.
+		p.advance()
+
+		// 3. Discard any leading SP characters from input_string.
+		p.stripWhitespace()
+
+		// 4. Let param_key be the result of running Parsing a Key with input_string.
+		paramKey, err := p.parseKey()
+		if err != nil {
+			return nil, fmt.Errorf("sfv: failed to parse parameter key: %w", err)
+		}
+
+		// 5. Let param_value be Boolean true.
+		var paramValue Value = true
+
+		// 6. If the first character of input_string is "=":
+		if !p.eof() && p.current() == tokens.Equals {
+			// 6.1. Consume the "=" character at the beginning of input_string.
+			p.advance()
+
+			// 6.2. Let param_value be the result of running Parsing a Bare Item with input_string.
+			bareItem, _, err := p.parseBareItem()
+			if err != nil {
+				return nil, fmt.Errorf("sfv: failed to parse parameter value: %w", err)
+			}
+			paramValue = bareItem
+		}
+
+		// Initialize maps on first parameter
+		if values == nil {
+			values = make(map[string]Value)
+		}
+
+		// 7. If parameters already contains a key param_key (comparing character for character),
+		//    overwrite its value with param_value.
+		// 8. Otherwise, append key param_key with value param_value to parameters.
+		if _, exists := values[paramKey]; !exists {
+			// Only add to keys slice if it's a new key
+			keys = append(keys, paramKey)
+		}
+		values[paramKey] = paramValue
+	}
+
+	// Only create Parameters object if we actually have parameters
+	if len(keys) == 0 {
+		return &Parameters{Values: make(map[string]Value)}, nil
+	}
+
+	return &Parameters{
+		keys:   keys,
+		Values: values,
+	}, nil
 }
 
 const (
@@ -393,12 +497,12 @@ func (p *parseContext) parseString() (string, error) {
 		c := p.current()
 		p.advance()
 
-		if c == '\\' {
+		if c == tokens.Backslash {
 			if p.eof() {
 				return "", fmt.Errorf("sfv: unexpected end of input after backslash")
 			}
 			next := p.current()
-			if next != tokens.DoubleQuote && next != '\\' {
+			if next != tokens.DoubleQuote && next != tokens.Backslash {
 				return "", fmt.Errorf("sfv: invalid escape sequence \\%c", next)
 			}
 			p.advance()
@@ -425,9 +529,9 @@ func (p *parseContext) parseToken() (string, error) {
 	for !p.eof() {
 		c := p.current()
 		// tchar from RFC 5234 plus : and /
-		if isAlpha(c) || isDigit(c) || c == '!' || c == '#' || c == '$' || c == '%' ||
-			c == '&' || c == '\'' || c == '*' || c == '+' || c == '-' || c == '.' ||
-			c == '^' || c == '_' || c == '`' || c == '|' || c == '~' || c == ':' || c == '/' {
+		if isAlpha(c) || isDigit(c) || c == tokens.Exclamation || c == tokens.Hash || c == tokens.Dollar || c == tokens.Percent ||
+			c == tokens.Ampersand || c == tokens.SingleQuote || c == tokens.Asterisk || c == tokens.Plus || c == tokens.Dash || c == tokens.Period ||
+			c == tokens.Caret || c == tokens.Underscore || c == tokens.Backtick || c == tokens.Pipe || c == tokens.Tilde || c == tokens.Colon || c == tokens.Slash {
 			sb.WriteByte(c)
 			p.advance()
 		} else {
@@ -458,7 +562,7 @@ func (p *parseContext) parseByteSequence() ([]byte, error) {
 			break
 		}
 		// Valid base64 characters
-		if isAlpha(c) || isDigit(c) || c == '+' || c == '/' || c == '=' {
+		if isAlpha(c) || isDigit(c) || c == tokens.Plus || c == tokens.Slash || c == tokens.Equals {
 			sb.WriteByte(c)
 			p.advance()
 		} else {
@@ -493,9 +597,9 @@ func (p *parseContext) parseBoolean() (bool, error) {
 	p.advance()
 
 	switch c {
-	case '1':
+	case tokens.One:
 		return true, nil
-	case '0':
+	case tokens.Zero:
 		return false, nil
 	default:
 		return false, fmt.Errorf("sfv: invalid boolean value, expected '0' or '1', got %c", c)
@@ -546,7 +650,7 @@ func (p *parseContext) parseDisplayString() (string, error) {
 			return "", fmt.Errorf("sfv: invalid character in display string: %c", c)
 		}
 
-		if c == '%' {
+		if c == tokens.Percent {
 			// Percent-encoded byte
 			if p.eof() {
 				return "", fmt.Errorf("sfv: unexpected end after %% in display string")
@@ -559,17 +663,11 @@ func (p *parseContext) parseDisplayString() (string, error) {
 			hex2 := p.current()
 			p.advance()
 
-			// Validate hex characters (0-9, a-f, A-F)
-			if !((hex1 >= '0' && hex1 <= '9') || (hex1 >= 'a' && hex1 <= 'f') || (hex1 >= 'A' && hex1 <= 'F')) ||
-				!((hex2 >= '0' && hex2 <= '9') || (hex2 >= 'a' && hex2 <= 'f') || (hex2 >= 'A' && hex2 <= 'F')) {
-				return "", fmt.Errorf("sfv: invalid hex sequence %%%c%c in display string", hex1, hex2)
-			}
-
-			// Decode hex
+			// Decode hex - ParseUint will validate the hex characters for us
 			hexStr := string([]byte{hex1, hex2})
 			val, err := strconv.ParseUint(hexStr, 16, 8)
 			if err != nil {
-				return "", fmt.Errorf("sfv: failed to parse hex sequence: %w", err)
+				return "", fmt.Errorf("sfv: invalid hex sequence %%%c%c in display string: %w", hex1, hex2, err)
 			}
 			byteArray = append(byteArray, byte(val))
 		} else if c == tokens.DoubleQuote {
