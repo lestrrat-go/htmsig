@@ -59,9 +59,38 @@ func (p *parseContext) stripWhitespace() {
 	}
 }
 
+// isDictionary checks if the input looks like a dictionary by looking for key=value patterns
+func (p *parseContext) isDictionary() bool {
+	// Save current position
+	savedIdx := p.idx
+	defer func() { p.idx = savedIdx }()
+
+	p.stripWhitespace()
+	if p.eof() {
+		return false
+	}
+
+	// Look for key=value pattern
+	// First, try to find a token (key)
+	if !isAlpha(p.current()) && p.current() != '*' {
+		return false
+	}
+
+	// Skip token characters
+	for !p.eof() && (isAlpha(p.current()) || isDigit(p.current()) ||
+		p.current() == '_' || p.current() == '-' || p.current() == '.' ||
+		p.current() == ':' || p.current() == '/' || p.current() == '*') {
+		p.advance()
+	}
+
+	p.stripWhitespace()
+
+	// Check if we have '=' which indicates dictionary
+	return !p.eof() && p.current() == '='
+}
+
 func (p *parseContext) do() error {
 	// RFC 9651 Section 4.2: Parsing Structured Fields algorithm
-	// Default to parsing as sf-list since that's the primary structure type
 
 	// 1. Convert input_bytes into an ASCII string input_string; if conversion fails, fail parsing.
 	// (This is already done in init() since we're working with []byte)
@@ -69,10 +98,22 @@ func (p *parseContext) do() error {
 	// 2. Discard any leading SP characters from input_string.
 	p.stripWhitespace()
 
-	// 3. Parse as sf-list (the primary structured field type)
-	output, err := p.parseList()
-	if err != nil {
-		return fmt.Errorf("sfv: failed to parse list: %w", err)
+	// Check if this looks like a dictionary or a list
+	var output Value
+	var err error
+
+	if p.isDictionary() {
+		// 3. Parse as sf-dictionary
+		output, err = p.parseDictionary()
+		if err != nil {
+			return fmt.Errorf("sfv: failed to parse dictionary: %w", err)
+		}
+	} else {
+		// 3. Parse as sf-list (the primary structured field type)
+		output, err = p.parseList()
+		if err != nil {
+			return fmt.Errorf("sfv: failed to parse list: %w", err)
+		}
 	}
 
 	// 6. Discard any leading SP characters from input_string.
@@ -140,6 +181,87 @@ func (p *parseContext) parseList() (*List, error) {
 	return &List{values: members}, nil
 }
 
+// parseDictionary implements the Dictionary parsing algorithm from RFC 9651 Section 4.2.2
+func (p *parseContext) parseDictionary() (*Dictionary, error) {
+	dict := &Dictionary{
+		values: make(map[string]Value),
+	}
+
+	for !p.eof() {
+		// Parse the key (must be a token)
+		key, err := p.parseKey()
+		if err != nil {
+			return nil, fmt.Errorf("sfv: parse dictionary: %w", err)
+		}
+
+		var value Value
+
+		// Check for '=' to see if there's a value
+		if !p.eof() && p.current() == '=' {
+			p.advance() // consume '='
+
+			// Parse the value (Item or Inner List)
+			if p.current() == tokens.OpenParen {
+				// Parse Inner List
+				value, err = p.parseInnerList()
+				if err != nil {
+					return nil, fmt.Errorf("sfv: parse dictionary value: %w", err)
+				}
+			} else {
+				// Parse Item
+				value, err = p.parseItem()
+				if err != nil {
+					return nil, fmt.Errorf("sfv: parse dictionary value: %w", err)
+				}
+			}
+		} else {
+			// No value specified, create a boolean Item with true value
+			value = &Item{
+				Type:  BooleanType,
+				Value: true,
+			}
+		}
+
+		// Parse parameters for the dictionary member
+		params, err := p.parseParameters()
+		if err != nil {
+			return nil, fmt.Errorf("sfv: parse dictionary parameters: %w", err)
+		}
+
+		// If the value is an Item, add parameters to it
+		if item, ok := value.(*Item); ok && params.Len() > 0 {
+			item.Parameters = params
+		}
+
+		dict.keys = append(dict.keys, key)
+		dict.values[key] = value
+
+		// Discard any leading OWS characters
+		p.stripWhitespace()
+
+		// If input is empty, return the dictionary
+		if p.eof() {
+			return dict, nil
+		}
+
+		// Consume comma; if not comma, fail parsing
+		if p.current() != tokens.Comma {
+			return nil, fmt.Errorf("sfv: parse dictionary: expected comma, got '%c'", p.current())
+		}
+		p.advance() // consume comma
+
+		// Discard any leading OWS characters
+		p.stripWhitespace()
+
+		// If input is empty after comma, there is a trailing comma; fail parsing
+		if p.eof() {
+			return nil, fmt.Errorf("sfv: parse dictionary: trailing comma")
+		}
+	}
+
+	return dict, nil
+}
+
 type Parameters struct {
 	keys   []string
 	Values map[string]Value // Exported field
@@ -155,6 +277,11 @@ func (p *Parameters) Len() int {
 type List struct {
 	values []Value
 	params *Parameters
+}
+
+type Dictionary struct {
+	keys   []string
+	values map[string]Value
 }
 
 func (p *parseContext) parseInnerList() (*List, error) {
