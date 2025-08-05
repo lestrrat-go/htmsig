@@ -10,4 +10,5 @@ const (
 	AtMark       = '@'
 	Percent      = '%'
 	Dash         = '-'
+	Period       = '.'
 )
