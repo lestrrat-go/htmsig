@@ -60,8 +60,64 @@ func (p *parseContext) stripWhitespace() {
 }
 
 func (p *parseContext) Do() error {
-	p.parseInnerList()
+	list, err := p.parseList()
+	if err != nil {
+		return err
+	}
+	p.value = list
 	return nil
+}
+
+// parseList implements the List parsing algorithm from RFC 9651 Section 4.2.1
+func (p *parseContext) parseList() (*List, error) {
+	var members []Value
+
+	for !p.eof() {
+		// Parse an Item or Inner List - check first character to determine which
+		var item Value
+		var err error
+
+		if p.current() == tokens.OpenParen {
+			// Parse Inner List
+			item, err = p.parseInnerList()
+			if err != nil {
+				return nil, fmt.Errorf("sfv: parse list: expected inner list: %w", err)
+			}
+		} else {
+			// Parse Item
+			item, err = p.parseItem()
+			if err != nil {
+				return nil, fmt.Errorf("sfv: parse list: expected item: %w", err)
+			}
+		}
+
+		members = append(members, item)
+
+		// Discard any leading OWS characters (optional whitespace)
+		p.stripWhitespace()
+
+		// If input is empty, return the list
+		if p.eof() {
+			return &List{values: members}, nil
+		}
+
+		// Consume comma; if not comma, fail parsing
+		if p.current() != ',' {
+			return nil, fmt.Errorf("sfv: parse list: expected comma, got '%c'", p.current())
+		}
+		p.advance() // consume comma
+
+		// Discard any leading OWS characters
+		p.stripWhitespace()
+
+		// If input is empty after comma, there is a trailing comma; fail parsing
+		if p.eof() {
+			return nil, fmt.Errorf("sfv: parse list: trailing comma")
+		}
+	}
+
+	// No structured data has been found; return empty list
+	return &List{values: members}, nil
 }
 
 type Parameters struct {
