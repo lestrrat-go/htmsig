@@ -1,9 +1,10 @@
-package sfv
+package sfv_test
 
 import (
 	"reflect"
 	"testing"
 
+	"github.com/lestrrat-go/htmsig/internal/sfv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -13,25 +14,27 @@ func TestParseIntegerList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{"123", []any{int64(123)}, []int{IntegerType}},
-		{"123, 456", []any{int64(123), int64(456)}, []int{IntegerType, IntegerType}},
-		{"-999", []any{int64(-999)}, []int{IntegerType}},
-		{"0", []any{int64(0)}, []int{IntegerType}},
+		{"123", []any{int64(123)}, []int{sfv.IntegerType}},
+		{"123, 456", []any{int64(123), int64(456)}, []int{sfv.IntegerType, sfv.IntegerType}},
+		{"-999", []any{int64(-999)}, []int{sfv.IntegerType}},
+		{"0", []any{int64(0)}, []int{sfv.IntegerType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -51,25 +54,27 @@ func TestParseDecimalList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{"123.456", []any{123.456}, []int{DecimalType}},
-		{"123.456, 789.123", []any{123.456, 789.123}, []int{DecimalType, DecimalType}},
-		{"-123.456", []any{-123.456}, []int{DecimalType}},
-		{"0.0", []any{0.0}, []int{DecimalType}},
+		{"123.456", []any{123.456}, []int{sfv.DecimalType}},
+		{"123.456, 789.123", []any{123.456, 789.123}, []int{sfv.DecimalType, sfv.DecimalType}},
+		{"-123.456", []any{-123.456}, []int{sfv.DecimalType}},
+		{"0.0", []any{0.0}, []int{sfv.DecimalType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -89,25 +94,27 @@ func TestParseStringList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{`"hello"`, []any{"hello"}, []int{StringType}},
-		{`"hello", "world"`, []any{"hello", "world"}, []int{StringType, StringType}},
-		{`"hello \"world\""`, []any{`hello "world"`}, []int{StringType}},
-		{`""`, []any{""}, []int{StringType}},
+		{`"hello"`, []any{"hello"}, []int{sfv.StringType}},
+		{`"hello", "world"`, []any{"hello", "world"}, []int{sfv.StringType, sfv.StringType}},
+		{`"hello \"world\""`, []any{`hello "world"`}, []int{sfv.StringType}},
+		{`""`, []any{""}, []int{sfv.StringType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -127,25 +134,27 @@ func TestParseTokenList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{"foo", []any{"foo"}, []int{TokenType}},
-		{"foo, bar", []any{"foo", "bar"}, []int{TokenType, TokenType}},
-		{"*", []any{"*"}, []int{TokenType}},
-		{"foo123", []any{"foo123"}, []int{TokenType}},
+		{"foo", []any{"foo"}, []int{sfv.TokenType}},
+		{"foo, bar", []any{"foo", "bar"}, []int{sfv.TokenType, sfv.TokenType}},
+		{"*", []any{"*"}, []int{sfv.TokenType}},
+		{"foo123", []any{"foo123"}, []int{sfv.TokenType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -165,24 +174,26 @@ func TestParseByteSequenceList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{":aGVsbG8=:", []any{[]byte("hello")}, []int{ByteSequenceType}},
-		{":aGVsbG8=:, :d29ybGQ=:", []any{[]byte("hello"), []byte("world")}, []int{ByteSequenceType, ByteSequenceType}},
-		{"::", []any{[]byte{}}, []int{ByteSequenceType}},
+		{":aGVsbG8=:", []any{[]byte("hello")}, []int{sfv.ByteSequenceType}},
+		{":aGVsbG8=:, :d29ybGQ=:", []any{[]byte("hello"), []byte("world")}, []int{sfv.ByteSequenceType, sfv.ByteSequenceType}},
+		{"::", []any{[]byte{}}, []int{sfv.ByteSequenceType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -202,24 +213,26 @@ func TestParseBooleanList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{"?1", []any{true}, []int{BooleanType}},
-		{"?0", []any{false}, []int{BooleanType}},
-		{"?1, ?0", []any{true, false}, []int{BooleanType, BooleanType}},
+		{"?1", []any{true}, []int{sfv.BooleanType}},
+		{"?0", []any{false}, []int{sfv.BooleanType}},
+		{"?1, ?0", []any{true, false}, []int{sfv.BooleanType, sfv.BooleanType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -239,24 +252,26 @@ func TestParseDateList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{"@1659578233", []any{int64(1659578233)}, []int{DateType}},
-		{"@0", []any{int64(0)}, []int{DateType}},
-		{"@1659578233, @1659578234", []any{int64(1659578233), int64(1659578234)}, []int{DateType, DateType}},
+		{"@1659578233", []any{int64(1659578233)}, []int{sfv.DateType}},
+		{"@0", []any{int64(0)}, []int{sfv.DateType}},
+		{"@1659578233, @1659578234", []any{int64(1659578233), int64(1659578234)}, []int{sfv.DateType, sfv.DateType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -276,24 +291,26 @@ func TestParseDisplayStringList(t *testing.T) {
 		expected []any
 		types    []int
 	}{
-		{`%"hello"`, []any{"hello"}, []int{DisplayStringType}},
-		{`%"hello", %"world"`, []any{"hello", "world"}, []int{DisplayStringType, DisplayStringType}},
-		{`%"This is intended for display to %c3%bcsers."`, []any{"This is intended for display to üsers."}, []int{DisplayStringType}},
+		{`%"hello"`, []any{"hello"}, []int{sfv.DisplayStringType}},
+		{`%"hello", %"world"`, []any{"hello", "world"}, []int{sfv.DisplayStringType, sfv.DisplayStringType}},
+		{`%"This is intended for display to %c3%bcsers."`, []any{"This is intended for display to üsers."}, []int{sfv.DisplayStringType}},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, len(test.expected), len(list.values), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), len(list.values))
+			require.Equal(t, len(test.expected), list.Len(), "Parse(%q) expected %d items, got %d", test.input, len(test.expected), list.Len())
 
 			for i, expected := range test.expected {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
@@ -313,23 +330,25 @@ func TestParseMixedList(t *testing.T) {
 		expectedTypes []int
 		expectedLen   int
 	}{
-		{`123, "hello", foo, :aGVsbG8=:, ?1, @1659578233`, []int{IntegerType, StringType, TokenType, ByteSequenceType, BooleanType, DateType}, 6},
-		{`123.456, "world"`, []int{DecimalType, StringType}, 2},
+		{`123, "hello", foo, :aGVsbG8=:, ?1, @1659578233`, []int{sfv.IntegerType, sfv.StringType, sfv.TokenType, sfv.ByteSequenceType, sfv.BooleanType, sfv.DateType}, 6},
+		{`123.456, "world"`, []int{sfv.DecimalType, sfv.StringType}, 2},
 	}
 
 	for _, test := range tests {
 		t.Run(test.input, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
-			require.Equal(t, test.expectedLen, len(list.values), "Parse(%q) expected %d items, got %d", test.input, test.expectedLen, len(list.values))
+			require.Equal(t, test.expectedLen, list.Len(), "Parse(%q) expected %d items, got %d", test.input, test.expectedLen, list.Len())
 
 			for i, expectedType := range test.expectedTypes {
-				item, ok := list.values[i].(Item)
-				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, list.values[i])
+				value, ok := list.Get(i)
+			require.True(t, ok, "Failed to get list item %d", i)
+			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, expectedType, item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, expectedType, item.Type())
 			}
@@ -338,13 +357,13 @@ func TestParseMixedList(t *testing.T) {
 }
 
 func TestParseEmptyList(t *testing.T) {
-	result, err := Parse([]byte(""))
+	result, err := sfv.Parse([]byte(""))
 	require.NoError(t, err, "Parse(\"\") failed")
 
-	list, ok := result.(*List)
+	list, ok := result.(*sfv.List)
 	require.True(t, ok, "Parse(\"\") expected *List, got %T", result)
 
-	require.Equal(t, 0, len(list.values), "Parse(\"\") expected empty list, got %d items", len(list.values))
+	require.Equal(t, 0, list.Len(), "Parse(\"\") expected empty list, got %d items", list.Len())
 }
 
 func TestParseInnerList(t *testing.T) {
@@ -360,15 +379,15 @@ func TestParseInnerList(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			result, err := Parse([]byte(test.input))
+			result, err := sfv.Parse([]byte(test.input))
 			require.NoError(t, err, "Parse(%q) failed", test.input)
 
-			list, ok := result.(*List)
+			list, ok := result.(*sfv.List)
 			require.True(t, ok, "Parse(%q) expected *List, got %T", test.input, result)
 
 			// Just check that parsing succeeds for now
 			// More detailed inner list testing would require more complex validation
-			require.Greater(t, len(list.values), 0, "Parse(%q) expected non-empty list", test.input)
+			require.Greater(t, list.Len(), 0, "Parse(%q) expected non-empty list", test.input)
 		})
 	}
 }
