@@ -21,8 +21,16 @@ func (il *InnerList) Get(index int) (Item, bool) {
 	return il.values[index], true
 }
 
+// Parameters returns the parameters associated with this InnerList
+func (il *InnerList) Parameters() *Parameters {
+	if il == nil {
+		return nil
+	}
+	return il.params
+}
+
 type List struct {
-	values []Value
+	values []any
 }
 
 // Len returns the number of values in the list
@@ -34,7 +42,7 @@ func (l *List) Len() int {
 }
 
 // Get returns the value at the specified index
-func (l *List) Get(index int) (Value, bool) {
+func (l *List) Get(index int) (any, bool) {
 	if l == nil || index < 0 || index >= len(l.values) {
 		return nil, false
 	}

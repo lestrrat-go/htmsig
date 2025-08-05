@@ -29,7 +29,15 @@ func (d *Dictionary) Set(key string, value any) error {
 	return nil
 }
 
-func (d *Dictionary) Get(key string) (Value, bool) {
+func (d *Dictionary) Get(key string) (any, bool) {
 	value, exists := d.values[key]
 	return value, exists
+}
+
+// Keys returns the ordered list of keys in the dictionary
+func (d *Dictionary) Keys() []string {
+	if d == nil {
+		return nil
+	}
+	return d.keys
 }

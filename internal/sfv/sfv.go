@@ -10,17 +10,14 @@ import (
 	"github.com/lestrrat-go/htmsig/internal/sfv/internal/tokens"
 )
 
-type Value interface {
-}
-
 type parseContext struct {
 	idx   int // current index in the data
 	size  int // size of the data
 	data  []byte
-	value Value // the parsed value, if any
+	value any // the parsed value, if any
 }
 
-func Parse(data []byte) (Value, error) {
+func Parse(data []byte) (any, error) {
 	var pctx parseContext
 	pctx.init(data)
 	if err := pctx.do(); err != nil {
@@ -99,7 +96,7 @@ func (p *parseContext) do() error {
 	p.stripWhitespace()
 
 	// Check if this looks like a dictionary or a list
-	var output Value
+	var output any
 	var err error
 
 	if p.isDictionary() {
@@ -131,11 +128,11 @@ func (p *parseContext) do() error {
 
 // parseList implements the List parsing algorithm from RFC 9651 Section 4.2.1
 func (p *parseContext) parseList() (*List, error) {
-	var members []Value
+	var members []any
 
 	for !p.eof() {
 		// Parse an Item or Inner List - check first character to determine which
-		var item Value
+		var item any
 		var err error
 
 		if p.current() == tokens.OpenParen {
@@ -191,7 +188,7 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 			return nil, fmt.Errorf("sfv: parse dictionary: %w", err)
 		}
 
-		var value Value
+		var value any
 
 		// Check for '=' to see if there's a value
 		if !p.eof() && p.current() == '=' {
@@ -258,7 +255,7 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 
 type Parameters struct {
 	keys   []string
-	Values map[string]Value // Exported field
+	Values map[string]any // Exported field
 }
 
 func (p *Parameters) Len() int {
@@ -356,7 +353,7 @@ func isLowerAlpha(c byte) bool {
 func (p *parseContext) parseParameters() (*Parameters, error) {
 	// RFC 9651 Section 4.2.3.2: Parsing Parameters
 	var keys []string
-	var values map[string]Value
+	var values map[string]any
 
 	for !p.eof() {
 		// 1. If the first character of input_string is not ";", exit the loop.
@@ -377,7 +374,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 		}
 
 		// 5. Let param_value be Boolean true.
-		var paramValue Value = true
+		var paramValue any = true
 
 		// 6. If the first character of input_string is "=":
 		if !p.eof() && p.current() == tokens.Equals {
@@ -394,7 +391,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 
 		// Initialize maps on first parameter
 		if values == nil {
-			values = make(map[string]Value)
+			values = make(map[string]any)
 		}
 
 		// 7. If parameters already contains a key param_key (comparing character for character),
@@ -409,7 +406,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 
 	// Only create Parameters object if we actually have parameters
 	if len(keys) == 0 {
-		return &Parameters{Values: make(map[string]Value)}, nil
+		return &Parameters{Values: make(map[string]any)}, nil
 	}
 
 	return &Parameters{
