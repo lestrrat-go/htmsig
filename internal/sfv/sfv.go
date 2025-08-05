@@ -1,6 +1,7 @@
 package sfv
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -254,15 +255,68 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 }
 
 type Parameters struct {
-	keys   []string
-	Values map[string]any // Exported field
+	keys []string
+
+	// Values are a map of parameters to their values, where values are
+	// bare items
+	Values map[string]Item
 }
 
 func (p *Parameters) Len() int {
 	if p == nil {
 		return 0
 	}
+	// Use Values map length if keys slice is empty but Values has data
+	if len(p.keys) == 0 && len(p.Values) > 0 {
+		return len(p.Values)
+	}
 	return len(p.keys)
+}
+
+func (p *Parameters) MarshalSFV() ([]byte, error) {
+	if p == nil || p.Len() == 0 {
+		return []byte{}, nil
+	}
+
+	var buf bytes.Buffer
+	// Ensure keys slice is populated from Values map if needed
+	if len(p.keys) == 0 && len(p.Values) > 0 {
+		for key := range p.Values {
+			p.keys = append(p.keys, key)
+		}
+	}
+
+	for _, key := range p.keys {
+		buf.WriteByte(';')
+		buf.WriteByte(' ')  // Always add space after semicolon for consistency
+		buf.WriteString(key)
+
+		value, exists := p.Values[key]
+		if !exists {
+			continue
+		}
+
+		// Only add '=' if the value is not Boolean true
+		if value.Type() == BooleanType {
+			var boolVal bool
+			if err := value.Value(&boolVal); err != nil {
+				return nil, fmt.Errorf("error getting boolean value for parameter %q: %w", key, err)
+			}
+			if boolVal {
+				// Boolean true parameters can be represented as bare keys
+				continue
+			}
+		}
+
+		buf.WriteByte('=')
+		marshaledParam, err := value.MarshalSFV()
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling parameter value %q: %w", key, err)
+		}
+		buf.Write(marshaledParam)
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (p *parseContext) parseInnerList() (*InnerList, error) {
@@ -353,7 +407,7 @@ func isLowerAlpha(c byte) bool {
 func (p *parseContext) parseParameters() (*Parameters, error) {
 	// RFC 9651 Section 4.2.3.2: Parsing Parameters
 	var keys []string
-	var values map[string]any
+	var values map[string]Item
 
 	for !p.eof() {
 		// 1. If the first character of input_string is not ";", exit the loop.
@@ -374,7 +428,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 		}
 
 		// 5. Let param_value be Boolean true.
-		var paramValue any = true
+		var paramValue Item = NewBoolean().SetValue(true)
 
 		// 6. If the first character of input_string is "=":
 		if !p.eof() && p.current() == tokens.Equals {
@@ -391,7 +445,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 
 		// Initialize maps on first parameter
 		if values == nil {
-			values = make(map[string]any)
+			values = make(map[string]Item)
 		}
 
 		// 7. If parameters already contains a key param_key (comparing character for character),
@@ -406,7 +460,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 
 	// Only create Parameters object if we actually have parameters
 	if len(keys) == 0 {
-		return &Parameters{Values: make(map[string]any)}, nil
+		return &Parameters{Values: make(map[string]Item)}, nil
 	}
 
 	return &Parameters{

@@ -47,7 +47,7 @@ func TestRFC9651Examples(t *testing.T) {
 		},
 		{
 			name:      "Inner List with Parameters",
-			input:     `("foo"; a=1;b=2);lvl=5, ("bar" "baz");lvl=1`,
+			input:     `("foo"; a=1; b=2); lvl=5, ("bar" "baz"); lvl=1`,
 			fieldType: "list",
 			// Inner lists with parameters are complex - we'll validate structure separately
 		},
@@ -55,7 +55,7 @@ func TestRFC9651Examples(t *testing.T) {
 		// Section 3.1.2 - Parameters examples
 		{
 			name:      "List with Parameters",
-			input:     "abc;a=1;b=2; cde_456, (ghi;jk=4 l);q=\"9\";r=w",
+			input:     "abc; a=1; b=2; cde_456, (ghi; jk=4 l); q=\"9\"; r=w",
 			fieldType: "list",
 			// Complex with parameters - we'll validate structure separately
 		},
@@ -97,7 +97,7 @@ func TestRFC9651Examples(t *testing.T) {
 		},
 		{
 			name:      "Dictionary with mixed Items and Inner Lists",
-			input:     "a=(1 2), b=3, c=4;aa=bb, d=(5 6);valid",
+			input:     "a=(1 2), b=3, c=4; aa=bb, d=(5 6); valid",
 			fieldType: "dictionary",
 			expected: map[string]any{
 				"b": int64(3),
@@ -245,6 +245,11 @@ func TestRFC9651Examples(t *testing.T) {
 					}
 				}
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -356,6 +361,11 @@ func TestRFC9651SpecificExamples(t *testing.T) {
 					require.Equal(t, test.expectedValue, actual, "Item has wrong value")
 				}
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -374,7 +384,7 @@ func TestRFC9651InnerLists(t *testing.T) {
 		},
 		{
 			name:        "Inner List with Parameters",
-			input:       `("foo"; a=1;b=2);lvl=5, ("bar" "baz");lvl=1`,
+			input:       `("foo"; a=1; b=2); lvl=5, ("bar" "baz"); lvl=1`,
 			description: "Inner Lists with Parameters at both levels",
 		},
 		{
@@ -417,6 +427,11 @@ func TestRFC9651InnerLists(t *testing.T) {
 					require.Equal(t, 3, innerList.Len(), "Expected 3 items in inner list")
 				}
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -429,7 +444,7 @@ func TestRFC9651Parameters(t *testing.T) {
 	}{
 		{
 			name:  "Item with Parameters",
-			input: "abc;a=1;b=2",
+			input: "abc; a=1; b=2",
 		},
 		{
 			name:  "Boolean Parameters",
@@ -437,7 +452,7 @@ func TestRFC9651Parameters(t *testing.T) {
 		},
 		{
 			name:  "Complex Parameters",
-			input: "abc;a=1;b=2; cde_456, (ghi;jk=4 l);q=\"9\";r=w",
+			input: "abc; a=1; b=2; cde_456, (ghi; jk=4 l); q=\"9\"; r=w",
 		},
 	}
 
@@ -463,6 +478,11 @@ func TestRFC9651Parameters(t *testing.T) {
 				}
 			}
 			require.True(t, foundParams, "Expected to find parameters in parsed result")
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -572,9 +592,19 @@ func TestRFC9651EdgeCases(t *testing.T) {
 				list, ok := result.(*sfv.List)
 				require.True(t, ok, "Result should be *sfv.List")
 				require.Equal(t, 0, list.Len(), "Empty input should result in empty list")
+
+				// Roundtrip test: marshal should produce the same serialization
+				marshaled, err := sfv.Marshal(result)
+				require.NoError(t, err, "Marshal(%q) failed", test.input)
+				require.Equal(t, "", string(marshaled), "Marshal result should match original input")
 			} else {
 				require.NoError(t, err, "Parse should succeed for: %s", test.input)
 				require.NotNil(t, result, "Parse result should not be nil")
+
+				// Roundtrip test: marshal should produce the same serialization
+				marshaled, err := sfv.Marshal(result)
+				require.NoError(t, err, "Marshal(%q) failed", test.input)
+				require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 			}
 		})
 	}

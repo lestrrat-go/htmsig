@@ -1,5 +1,10 @@
 package sfv
 
+import (
+	"bytes"
+	"strings"
+)
+
 type InnerList struct {
 	values []Item
 	params *Parameters
@@ -21,6 +26,43 @@ func (il *InnerList) Get(index int) (Item, bool) {
 	return il.values[index], true
 }
 
+// MarshalSFV implements the Marshaler interface for InnerList
+func (il *InnerList) MarshalSFV() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('(')
+
+	for i := 0; i < il.Len(); i++ {
+		if i > 0 {
+			buf.WriteByte(' ')
+		}
+
+		item, ok := il.Get(i)
+		if !ok {
+			continue
+		}
+
+		itemBytes, err := item.MarshalSFV()
+		if err != nil {
+			return nil, err
+		}
+
+		buf.Write(itemBytes)
+	}
+
+	buf.WriteByte(')')
+
+	// Add parameters if any
+	if il.params != nil && il.params.Len() > 0 {
+		paramBytes, err := il.params.MarshalSFV()
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(paramBytes)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // Parameters returns the parameters associated with this InnerList
 func (il *InnerList) Parameters() *Parameters {
 	if il == nil {
@@ -31,6 +73,42 @@ func (il *InnerList) Parameters() *Parameters {
 
 type List struct {
 	values []any
+}
+
+// MarshalSFV implements the Marshaler interface for List
+func (l *List) MarshalSFV() ([]byte, error) {
+	if l.Len() == 0 {
+		return []byte{}, nil
+	}
+
+	var parts []string
+	for i := 0; i < l.Len(); i++ {
+		value, ok := l.Get(i)
+		if !ok {
+			continue
+		}
+
+		var itemBytes []byte
+		var err error
+
+		switch v := value.(type) {
+		case Item:
+			itemBytes, err = v.MarshalSFV()
+		case *InnerList:
+			itemBytes, err = v.MarshalSFV()
+		default:
+			// This shouldn't happen with properly constructed Lists
+			continue
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		parts = append(parts, string(itemBytes))
+	}
+
+	return []byte(strings.Join(parts, ", ")), nil
 }
 
 // Len returns the number of values in the list

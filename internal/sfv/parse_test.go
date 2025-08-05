@@ -44,6 +44,11 @@ func TestParseIntegerList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -84,6 +89,11 @@ func TestParseDecimalList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -124,6 +134,11 @@ func TestParseStringList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -164,6 +179,11 @@ func TestParseTokenList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -203,6 +223,11 @@ func TestParseByteSequenceList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -242,6 +267,11 @@ func TestParseBooleanList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -281,6 +311,11 @@ func TestParseDateList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -320,6 +355,11 @@ func TestParseDisplayStringList(t *testing.T) {
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -352,6 +392,11 @@ func TestParseMixedList(t *testing.T) {
 
 				require.Equal(t, expectedType, item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, expectedType, item.Type())
 			}
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
@@ -364,6 +409,11 @@ func TestParseEmptyList(t *testing.T) {
 	require.True(t, ok, "Parse(\"\") expected *List, got %T", result)
 
 	require.Equal(t, 0, list.Len(), "Parse(\"\") expected empty list, got %d items", list.Len())
+
+	// Roundtrip test: marshal should produce the same serialization
+	marshaled, err := sfv.Marshal(result)
+	require.NoError(t, err, "Marshal(\"\") failed")
+	require.Equal(t, "", string(marshaled), "Marshal result should match original input")
 }
 
 func TestParseInnerList(t *testing.T) {
@@ -388,6 +438,11 @@ func TestParseInnerList(t *testing.T) {
 			// Just check that parsing succeeds for now
 			// More detailed inner list testing would require more complex validation
 			require.Greater(t, list.Len(), 0, "Parse(%q) expected non-empty list", test.input)
+
+			// Roundtrip test: marshal should produce the same serialization
+			marshaled, err := sfv.Marshal(result)
+			require.NoError(t, err, "Marshal(%q) failed", test.input)
+			require.Equal(t, test.input, string(marshaled), "Marshal result should match original input")
 		})
 	}
 }
