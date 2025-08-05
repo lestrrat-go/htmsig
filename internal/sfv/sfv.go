@@ -291,7 +291,6 @@ func (il *InnerList) Get(index int) (Item, bool) {
 
 type List struct {
 	values []Value
-	params *Parameters
 }
 
 // Len returns the number of values in the list
