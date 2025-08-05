@@ -183,10 +183,7 @@ func (p *parseContext) parseList() (*List, error) {
 
 // parseDictionary implements the Dictionary parsing algorithm from RFC 9651 Section 4.2.2
 func (p *parseContext) parseDictionary() (*Dictionary, error) {
-	dict := &Dictionary{
-		values: make(map[string]Value),
-	}
-
+	dict := NewDictionary()
 	for !p.eof() {
 		// Parse the key (must be a token)
 		key, err := p.parseKey()
@@ -216,10 +213,7 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 			}
 		} else {
 			// No value specified, create a boolean Item with true value
-			value = &Item{
-				Type:  BooleanType,
-				Value: true,
-			}
+			value = NewBoolean().SetValue(true)
 		}
 
 		// Parse parameters for the dictionary member
@@ -229,8 +223,8 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 		}
 
 		// If the value is an Item, add parameters to it
-		if item, ok := value.(*Item); ok && params.Len() > 0 {
-			item.Parameters = params
+		if item, ok := value.(Item); ok && params.Len() > 0 {
+			item.With(params)
 		}
 
 		dict.keys = append(dict.keys, key)
@@ -274,24 +268,56 @@ func (p *Parameters) Len() int {
 	return len(p.keys)
 }
 
+type InnerList struct {
+	values []Item
+	params *Parameters
+}
+
+// Len returns the number of values in the inner list
+func (il *InnerList) Len() int {
+	if il == nil {
+		return 0
+	}
+	return len(il.values)
+}
+
+// Get returns the value at the specified index
+func (il *InnerList) Get(index int) (Item, bool) {
+	if il == nil || index < 0 || index >= len(il.values) {
+		return nil, false
+	}
+	return il.values[index], true
+}
+
 type List struct {
 	values []Value
 	params *Parameters
 }
 
-type Dictionary struct {
-	keys   []string
-	values map[string]Value
+// Len returns the number of values in the list
+func (l *List) Len() int {
+	if l == nil {
+		return 0
+	}
+	return len(l.values)
 }
 
-func (p *parseContext) parseInnerList() (*List, error) {
+// Get returns the value at the specified index
+func (l *List) Get(index int) (Value, bool) {
+	if l == nil || index < 0 || index >= len(l.values) {
+		return nil, false
+	}
+	return l.values[index], true
+}
+
+func (p *parseContext) parseInnerList() (*InnerList, error) {
 	p.stripWhitespace()
 	if p.current() != tokens.OpenParen {
 		return nil, fmt.Errorf(`sfv: parse inner list: expected '%c', got '%c'`, tokens.OpenParen, p.current())
 	}
 	p.advance() // consume opening parenthesis
 
-	var list List
+	var list InnerList
 	for !p.eof() {
 		p.stripWhitespace()
 		if p.current() == tokens.CloseParen {
@@ -401,7 +427,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 			p.advance()
 
 			// 6.2. Let param_value be the result of running Parsing a Bare Item with input_string.
-			bareItem, _, err := p.parseBareItem()
+			bareItem, err := p.parseBareItem()
 			if err != nil {
 				return nil, fmt.Errorf("sfv: failed to parse parameter value: %w", err)
 			}
@@ -446,14 +472,8 @@ const (
 	DisplayStringType
 )
 
-type Item struct {
-	Type       int
-	Value      Value
-	Parameters *Parameters
-}
-
-func (p *parseContext) parseItem() (*Item, error) {
-	bareItem, itemType, err := p.parseBareItem()
+func (p *parseContext) parseItem() (Item, error) {
+	bareItem, err := p.parseBareItem()
 	if err != nil {
 		return nil, fmt.Errorf("sfv: failed to parse bare item: %w", err)
 	}
@@ -463,13 +483,7 @@ func (p *parseContext) parseItem() (*Item, error) {
 		return nil, fmt.Errorf("sfv: failed to parse parameters: %w", err)
 	}
 
-	// For now, we'll return a simple structure with the bare item and parameters
-	// In a complete implementation, you might want to create a proper Item type
-	return &Item{
-		Type:       itemType,
-		Value:      bareItem,
-		Parameters: params,
-	}, nil
+	return bareItem.With(params), nil
 }
 
 func isDigit(c byte) bool {
@@ -480,61 +494,57 @@ func isAlpha(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-func (p *parseContext) parseBareItem() (any, int, error) {
+func (p *parseContext) parseBareItem() (Item, error) {
 	p.stripWhitespace()
 	switch c := p.current(); {
 	case c == '-' || isDigit(c):
 		v, err := p.parseDecimal()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (decimal): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (decimal): %w`, err)
 		}
-		// Determine if it's an integer or decimal
-		if _, ok := v.(int); ok {
-			return v, IntegerType, nil
-		}
-		return v, DecimalType, nil
+		return v, nil
 	case c == tokens.DoubleQuote:
 		v, err := p.parseString()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (quoted string): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (quoted string): %w`, err)
 		}
-		return v, StringType, nil
+		return v, nil
 	case c == tokens.Asterisk || isAlpha(c):
 		v, err := p.parseToken()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (token): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (token): %w`, err)
 		}
-		return v, TokenType, nil
+		return v, nil
 	case c == tokens.Colon:
 		v, err := p.parseByteSequence()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (byte sequence): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (byte sequence): %w`, err)
 		}
-		return v, ByteSequenceType, nil
+		return v, nil
 	case c == tokens.QuestionMark:
 		v, err := p.parseBoolean()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (boolean): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (boolean): %w`, err)
 		}
-		return v, BooleanType, nil
+		return v, nil
 	case c == tokens.AtMark:
 		v, err := p.parseDate()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (date): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (date): %w`, err)
 		}
-		return v, DateType, nil
+		return v, nil
 	case c == tokens.Percent:
 		v, err := p.parseDisplayString()
 		if err != nil {
-			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (display string): %w`, err)
+			return nil, fmt.Errorf(`sfv: failed to parse bare item (display string): %w`, err)
 		}
-		return v, DisplayStringType, nil
+		return v, nil
 	default:
-		return nil, InvalidType, fmt.Errorf(`sfv: unrecognized character while parsing bare item: %c`, c)
+		return nil, fmt.Errorf(`sfv: unrecognized character while parsing bare item: %c`, c)
 	}
 }
 
-func (p *parseContext) parseDecimal() (any, error) {
+func (p *parseContext) parseDecimal() (Item, error) {
 	var decimal bool
 	sign := 1
 
@@ -598,7 +608,7 @@ LOOP:
 		if err != nil {
 			return nil, fmt.Errorf(`sfv: failed to parse numeric value as float: %w`, err)
 		}
-		return v * float64(sign), nil
+		return NewDecimal().SetValue(v * float64(sign)), nil
 	}
 
 	if sb.Len() > 15 {
@@ -609,13 +619,13 @@ LOOP:
 	if err != nil {
 		return nil, fmt.Errorf(`sfv: failed to parse numeric value as integer: %w`, err)
 	}
-	return v * sign, nil
+	return NewInteger().SetValue(int64(v * sign)), nil
 }
 
 // parseString parses a quoted string according to RFC 9651 Section 4.2.5
-func (p *parseContext) parseString() (string, error) {
+func (p *parseContext) parseString() (*String, error) {
 	if p.current() != tokens.DoubleQuote {
-		return "", fmt.Errorf("sfv: expected quote at start of string")
+		return nil, fmt.Errorf("sfv: expected quote at start of string")
 	}
 	p.advance() // consume opening quote
 
@@ -626,30 +636,31 @@ func (p *parseContext) parseString() (string, error) {
 
 		if c == tokens.Backslash {
 			if p.eof() {
-				return "", fmt.Errorf("sfv: unexpected end of input after backslash")
+				return nil, fmt.Errorf("sfv: unexpected end of input after backslash")
 			}
 			next := p.current()
 			if next != tokens.DoubleQuote && next != tokens.Backslash {
-				return "", fmt.Errorf("sfv: invalid escape sequence \\%c", next)
+				return nil, fmt.Errorf("sfv: invalid escape sequence \\%c", next)
 			}
 			p.advance()
 			sb.WriteByte(next)
 		} else if c == tokens.DoubleQuote {
-			return sb.String(), nil
+			s := NewString().SetValue(sb.String())
+			return s, nil
 		} else if c <= 0x1f || c >= 0x7f {
-			return "", fmt.Errorf("sfv: invalid character in string: %c", c)
+			return nil, fmt.Errorf("sfv: invalid character in string: %c", c)
 		} else {
 			sb.WriteByte(c)
 		}
 	}
-	return "", fmt.Errorf("sfv: unexpected end of input, expected closing quote")
+	return nil, fmt.Errorf("sfv: unexpected end of input, expected closing quote")
 }
 
 // parseToken parses a token according to RFC 9651 Section 4.2.6
-func (p *parseContext) parseToken() (string, error) {
+func (p *parseContext) parseToken() (*Token, error) {
 	c := p.current()
 	if !isAlpha(c) && c != tokens.Asterisk {
-		return "", fmt.Errorf("sfv: token must start with alpha or asterisk")
+		return nil, fmt.Errorf("sfv: token must start with alpha or asterisk")
 	}
 
 	var sb strings.Builder
@@ -667,13 +678,13 @@ func (p *parseContext) parseToken() (string, error) {
 	}
 
 	if sb.Len() == 0 {
-		return "", fmt.Errorf("sfv: empty token")
+		return nil, fmt.Errorf("sfv: empty token")
 	}
-	return sb.String(), nil
+	return NewToken().SetValue(sb.String()), nil
 }
 
 // parseByteSequence parses a byte sequence according to RFC 9651 Section 4.2.7
-func (p *parseContext) parseByteSequence() ([]byte, error) {
+func (p *parseContext) parseByteSequence() (*ByteSequence, error) {
 	if p.current() != tokens.Colon {
 		return nil, fmt.Errorf("sfv: expected colon at start of byte sequence")
 	}
@@ -706,18 +717,18 @@ func (p *parseContext) parseByteSequence() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sfv: failed to decode base64: %w", err)
 	}
-	return decoded, nil
+	return NewByteSequence().SetValue(decoded), nil
 }
 
 // parseBoolean parses a boolean according to RFC 9651 Section 4.2.8
-func (p *parseContext) parseBoolean() (bool, error) {
+func (p *parseContext) parseBoolean() (*Boolean, error) {
 	if p.current() != tokens.QuestionMark {
-		return false, fmt.Errorf("sfv: expected question mark at start of boolean")
+		return nil, fmt.Errorf("sfv: expected question mark at start of boolean")
 	}
 	p.advance() // consume question mark
 
 	if p.eof() {
-		return false, fmt.Errorf("sfv: unexpected end of input, expected boolean value")
+		return nil, fmt.Errorf("sfv: unexpected end of input, expected boolean value")
 	}
 
 	c := p.current()
@@ -725,46 +736,50 @@ func (p *parseContext) parseBoolean() (bool, error) {
 
 	switch c {
 	case tokens.One:
-		return true, nil
+		return &Boolean{value: true}, nil
 	case tokens.Zero:
-		return false, nil
+		return &Boolean{value: false}, nil
 	default:
-		return false, fmt.Errorf("sfv: invalid boolean value, expected '0' or '1', got %c", c)
+		return nil, fmt.Errorf("sfv: invalid boolean value, expected '0' or '1', got %c", c)
 	}
 }
 
 // parseDate parses a date according to RFC 9651 Section 4.2.9
-func (p *parseContext) parseDate() (int64, error) {
+func (p *parseContext) parseDate() (*Date, error) {
 	if p.current() != tokens.AtMark {
-		return 0, fmt.Errorf("sfv: expected @ at start of date")
+		return nil, fmt.Errorf("sfv: expected @ at start of date")
 	}
 	p.advance() // consume @ mark
 
 	// Parse the integer value
 	value, err := p.parseDecimal()
 	if err != nil {
-		return 0, fmt.Errorf("sfv: failed to parse date integer: %w", err)
+		return nil, fmt.Errorf("sfv: failed to parse date integer: %w", err)
 	}
 
 	// Date must be an integer, not a decimal
-	intValue, ok := value.(int)
-	if !ok {
-		return 0, fmt.Errorf("sfv: date must be an integer")
+	if value.Type() != IntegerType {
+		return nil, fmt.Errorf("sfv: date must be an integer")
 	}
 
-	return int64(intValue), nil
+	var intValue int64
+	if err := value.Value(&intValue); err != nil {
+		return nil, fmt.Errorf("sfv: failed to convert date value to int64: %w", err)
+	}
+
+	return NewDate().SetValue(intValue), nil
 }
 
 // parseDisplayString parses a display string according to RFC 9651 Section 4.2.10
-func (p *parseContext) parseDisplayString() (string, error) {
+func (p *parseContext) parseDisplayString() (*DisplayString, error) {
 	// Expect %"
 	if p.current() != tokens.Percent {
-		return "", fmt.Errorf("sfv: expected %% at start of display string")
+		return nil, fmt.Errorf("sfv: expected %% at start of display string")
 	}
 	p.advance()
 
 	if p.eof() || p.current() != tokens.DoubleQuote {
-		return "", fmt.Errorf("sfv: expected quote after %% in display string")
+		return nil, fmt.Errorf("sfv: expected quote after %% in display string")
 	}
 	p.advance() // consume quote
 
@@ -774,18 +789,18 @@ func (p *parseContext) parseDisplayString() (string, error) {
 		p.advance()
 
 		if c <= 0x1f || c >= 0x7f {
-			return "", fmt.Errorf("sfv: invalid character in display string: %c", c)
+			return nil, fmt.Errorf("sfv: invalid character in display string: %c", c)
 		}
 
 		if c == tokens.Percent {
 			// Percent-encoded byte
 			if p.eof() {
-				return "", fmt.Errorf("sfv: unexpected end after %% in display string")
+				return nil, fmt.Errorf("sfv: unexpected end after %% in display string")
 			}
 			hex1 := p.current()
 			p.advance()
 			if p.eof() {
-				return "", fmt.Errorf("sfv: incomplete hex sequence in display string")
+				return nil, fmt.Errorf("sfv: incomplete hex sequence in display string")
 			}
 			hex2 := p.current()
 			p.advance()
@@ -794,17 +809,17 @@ func (p *parseContext) parseDisplayString() (string, error) {
 			hexStr := string([]byte{hex1, hex2})
 			val, err := strconv.ParseUint(hexStr, 16, 8)
 			if err != nil {
-				return "", fmt.Errorf("sfv: invalid hex sequence %%%c%c in display string: %w", hex1, hex2, err)
+				return nil, fmt.Errorf("sfv: invalid hex sequence %%%c%c in display string: %w", hex1, hex2, err)
 			}
 			byteArray = append(byteArray, byte(val))
 		} else if c == tokens.DoubleQuote {
 			// End of display string
 			// Decode as UTF-8
-			return string(byteArray), nil
+			return NewDisplayString().SetValue(string(byteArray)), nil
 		} else {
 			// Regular ASCII character
 			byteArray = append(byteArray, c)
 		}
 	}
-	return "", fmt.Errorf("sfv: unexpected end of input, expected closing quote in display string")
+	return nil, fmt.Errorf("sfv: unexpected end of input, expected closing quote in display string")
 }
