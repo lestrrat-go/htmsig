@@ -3,6 +3,8 @@ package input
 import (
 	"fmt"
 	"time"
+
+	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
 // Definition represents a single signature definition within a Value.
@@ -28,8 +30,8 @@ type Definition struct {
 	nonce   *string // Random unique value
 	tag     *string // Application-specific tag
 
-	// Additional parameters. Because we cannot predict what
-	additionalParams map[string]any
+	// Additional parameters.
+	additionalParams *sfv.Parameters
 }
 
 // DefinitionBuilder helps build Definition objects
@@ -41,7 +43,7 @@ type DefinitionBuilder struct {
 func NewDefinitionBuilder() *DefinitionBuilder {
 	return &DefinitionBuilder{
 		def: &Definition{
-			additionalParams: make(map[string]any),
+			additionalParams: &sfv.Parameters{Values: make(map[string]sfv.Item)},
 		},
 	}
 }
@@ -110,7 +112,33 @@ func (b *DefinitionBuilder) Tag(tag string) *DefinitionBuilder {
 
 // Parameter sets an additional parameter
 func (b *DefinitionBuilder) Parameter(key string, value any) *DefinitionBuilder {
-	b.def.additionalParams[key] = value
+	if b.def.additionalParams == nil {
+		b.def.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.Item)}
+	}
+	
+	// Convert any value to sfv.Item
+	var item sfv.Item
+	switch v := value.(type) {
+	case sfv.Item:
+		item = v
+	case bool:
+		item = sfv.NewBoolean().SetValue(v)
+	case int:
+		item = sfv.NewInteger().SetValue(int64(v))
+	case int64:
+		item = sfv.NewInteger().SetValue(v)
+	case float64:
+		item = sfv.NewDecimal().SetValue(v)
+	case string:
+		item = sfv.NewString().SetValue(v)
+	case []byte:
+		item = sfv.NewByteSequence().SetValue(v)
+	default:
+		// Default to string conversion
+		item = sfv.NewString().SetValue(fmt.Sprintf("%v", v))
+	}
+	
+	b.def.additionalParams.Values[key] = item
 	return b
 }
 
@@ -129,7 +157,7 @@ func (b *DefinitionBuilder) Build() (*Definition, error) {
 	if b.def.algorithm == "" {
 		return nil, fmt.Errorf("algorithm is required")
 	}
-	
+
 	return b.def, nil
 }
 
@@ -249,18 +277,102 @@ func (d *Definition) SetTag(tag string) *Definition {
 
 // Parameter returns an additional parameter
 func (d *Definition) Parameter(key string) any {
-	if d.additionalParams == nil {
+	if d.additionalParams == nil || d.additionalParams.Values == nil {
 		return nil
 	}
-	return d.additionalParams[key]
+	item, exists := d.additionalParams.Values[key]
+	if !exists {
+		return nil
+	}
+	
+	// Convert sfv.Item back to Go value
+	switch item.Type() {
+	case sfv.BooleanType:
+		var b bool
+		if err := item.Value(&b); err == nil {
+			return b
+		}
+	case sfv.IntegerType:
+		var i int64
+		if err := item.Value(&i); err == nil {
+			return i
+		}
+	case sfv.DecimalType:
+		var f float64
+		if err := item.Value(&f); err == nil {
+			return f
+		}
+	case sfv.StringType:
+		var s string
+		if err := item.Value(&s); err == nil {
+			return s
+		}
+	case sfv.TokenType:
+		var s string
+		if err := item.Value(&s); err == nil {
+			return s
+		}
+	case sfv.ByteSequenceType:
+		var b []byte
+		if err := item.Value(&b); err == nil {
+			return b
+		}
+	case sfv.DateType:
+		var i int64
+		if err := item.Value(&i); err == nil {
+			return i
+		}
+	case sfv.DisplayStringType:
+		var s string
+		if err := item.Value(&s); err == nil {
+			return s
+		}
+	}
+	
+	// Return the item itself if conversion fails
+	return item
 }
 
 // SetParameter sets an additional parameter
 func (d *Definition) SetParameter(key string, value any) *Definition {
 	if d.additionalParams == nil {
-		d.additionalParams = make(map[string]any)
+		d.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.Item)}
 	}
-	d.additionalParams[key] = value
+	
+	// Convert any value to sfv.Item
+	var item sfv.Item
+	switch v := value.(type) {
+	case sfv.Item:
+		item = v
+	case bool:
+		item = sfv.NewBoolean().SetValue(v)
+	case int:
+		item = sfv.NewInteger().SetValue(int64(v))
+	case int64:
+		item = sfv.NewInteger().SetValue(v)
+	case float64:
+		item = sfv.NewDecimal().SetValue(v)
+	case string:
+		item = sfv.NewString().SetValue(v)
+	case []byte:
+		item = sfv.NewByteSequence().SetValue(v)
+	default:
+		// Default to string conversion
+		item = sfv.NewString().SetValue(fmt.Sprintf("%v", v))
+	}
+	
+	d.additionalParams.Values[key] = item
+	return d
+}
+
+// Parameters returns the additional parameters as *sfv.Parameters
+func (d *Definition) Parameters() *sfv.Parameters {
+	return d.additionalParams
+}
+
+// SetParameters sets the additional parameters directly
+func (d *Definition) SetParameters(params *sfv.Parameters) *Definition {
+	d.additionalParams = params
 	return d
 }
 
