@@ -23,7 +23,7 @@ type parseContext struct {
 func Parse(data []byte) (Value, error) {
 	var pctx parseContext
 	pctx.init(data)
-	if err := pctx.Do(); err != nil {
+	if err := pctx.do(); err != nil {
 		return nil, err
 	}
 	return pctx.value, nil
@@ -59,12 +59,32 @@ func (p *parseContext) stripWhitespace() {
 	}
 }
 
-func (p *parseContext) Do() error {
-	list, err := p.parseList()
+func (p *parseContext) do() error {
+	// RFC 9651 Section 4.2: Parsing Structured Fields algorithm
+	// Default to parsing as sf-list since that's the primary structure type
+
+	// 1. Convert input_bytes into an ASCII string input_string; if conversion fails, fail parsing.
+	// (This is already done in init() since we're working with []byte)
+
+	// 2. Discard any leading SP characters from input_string.
+	p.stripWhitespace()
+
+	// 3. Parse as sf-list (the primary structured field type)
+	output, err := p.parseList()
 	if err != nil {
-		return err
+		return fmt.Errorf("sfv: failed to parse list: %w", err)
 	}
-	p.value = list
+
+	// 6. Discard any leading SP characters from input_string.
+	p.stripWhitespace()
+
+	// 7. If input_string is not empty, fail parsing.
+	if !p.eof() {
+		return fmt.Errorf("sfv: unexpected trailing characters")
+	}
+
+	// 8. Otherwise, return output.
+	p.value = output
 	return nil
 }
 
@@ -142,12 +162,12 @@ func (p *parseContext) parseInnerList() (*List, error) {
 	if p.current() != tokens.OpenParen {
 		return nil, fmt.Errorf(`sfv: parse inner list: expected '%c', got '%c'`, tokens.OpenParen, p.current())
 	}
+	p.advance() // consume opening parenthesis
 
 	var list List
 	for !p.eof() {
 		p.stripWhitespace()
-		switch c := p.current(); c {
-		case tokens.CloseParen:
+		if p.current() == tokens.CloseParen {
 			// done with this list, consume this character
 			p.advance()
 			params, err := p.parseParameters()
@@ -159,19 +179,19 @@ func (p *parseContext) parseInnerList() (*List, error) {
 				list.params = params
 			}
 			return &list, nil
-		default:
-			// otherwise, parse an Item
-			item, err := p.parseItem()
-			if err != nil {
-				return nil, fmt.Errorf("sfv: parse inner list: %w", err)
-			}
-			list.values = append(list.values, item)
+		}
 
-			// This must be followed by a space or a close paren
-			if !p.eof() {
-				if c := p.current(); !unicode.IsSpace(rune(c)) && c != tokens.CloseParen {
-					return nil, fmt.Errorf("sfv: parse inner list: expected space or '%c' after item, got '%c'", tokens.CloseParen, c)
-				}
+		// otherwise, parse an Item
+		item, err := p.parseItem()
+		if err != nil {
+			return nil, fmt.Errorf("sfv: parse inner list: %w", err)
+		}
+		list.values = append(list.values, item)
+
+		// This must be followed by a space or a close paren
+		if !p.eof() {
+			if c := p.current(); !unicode.IsSpace(rune(c)) && c != tokens.CloseParen {
+				return nil, fmt.Errorf("sfv: parse inner list: expected space or '%c' after item, got '%c'", tokens.CloseParen, c)
 			}
 		}
 	}
@@ -183,8 +203,26 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 	return &Parameters{}, nil // TODO: implement parameter parsing
 }
 
-func (p *parseContext) parseItem() (Value, error) {
-	bareItem, err := p.parseBareItem()
+const (
+	InvalidType = iota
+	IntegerType
+	DecimalType
+	StringType
+	TokenType
+	ByteSequenceType
+	BooleanType
+	DateType
+	DisplayStringType
+)
+
+type Item struct {
+	Type       int
+	Value      Value
+	Parameters *Parameters
+}
+
+func (p *parseContext) parseItem() (*Item, error) {
+	bareItem, itemType, err := p.parseBareItem()
 	if err != nil {
 		return nil, fmt.Errorf("sfv: failed to parse bare item: %w", err)
 	}
@@ -196,9 +234,10 @@ func (p *parseContext) parseItem() (Value, error) {
 
 	// For now, we'll return a simple structure with the bare item and parameters
 	// In a complete implementation, you might want to create a proper Item type
-	return map[string]interface{}{
-		"value":      bareItem,
-		"parameters": params,
+	return &Item{
+		Type:       itemType,
+		Value:      bareItem,
+		Parameters: params,
 	}, nil
 }
 
@@ -210,53 +249,57 @@ func isAlpha(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-func (p *parseContext) parseBareItem() (any, error) {
+func (p *parseContext) parseBareItem() (any, int, error) {
 	p.stripWhitespace()
 	switch c := p.current(); {
 	case c == '-' || isDigit(c):
 		v, err := p.parseDecimal()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (decimal): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (decimal): %w`, err)
 		}
-		return v, nil
+		// Determine if it's an integer or decimal
+		if _, ok := v.(int); ok {
+			return v, IntegerType, nil
+		}
+		return v, DecimalType, nil
 	case c == tokens.DoubleQuote:
 		v, err := p.parseString()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (quoted string): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (quoted string): %w`, err)
 		}
-		return v, nil
+		return v, StringType, nil
 	case c == tokens.Asterisk || isAlpha(c):
 		v, err := p.parseToken()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (token): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (token): %w`, err)
 		}
-		return v, nil
+		return v, TokenType, nil
 	case c == tokens.Colon:
 		v, err := p.parseByteSequence()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (byte sequence): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (byte sequence): %w`, err)
 		}
-		return v, nil
+		return v, ByteSequenceType, nil
 	case c == tokens.QuestionMark:
 		v, err := p.parseBoolean()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (boolean): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (boolean): %w`, err)
 		}
-		return v, nil
+		return v, BooleanType, nil
 	case c == tokens.AtMark:
 		v, err := p.parseDate()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (date): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (date): %w`, err)
 		}
-		return v, nil
+		return v, DateType, nil
 	case c == tokens.Percent:
 		v, err := p.parseDisplayString()
 		if err != nil {
-			return nil, fmt.Errorf(`sfv: failed to parse bare item (display string): %w`, err)
+			return nil, InvalidType, fmt.Errorf(`sfv: failed to parse bare item (display string): %w`, err)
 		}
-		return v, nil
+		return v, DisplayStringType, nil
 	default:
-		return nil, fmt.Errorf(`sfv: unrecognized character while parsing bare item: %c`, c)
+		return nil, InvalidType, fmt.Errorf(`sfv: unrecognized character while parsing bare item: %c`, c)
 	}
 }
 
@@ -296,7 +339,8 @@ LOOP:
 			}
 			decimal = true
 		case !isDigit(c):
-			return nil, fmt.Errorf(`sfv: failed to parse numeric value: expected digit`)
+			// End of number - break out of loop
+			break LOOP
 		default:
 
 		}
