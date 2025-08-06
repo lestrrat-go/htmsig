@@ -6,6 +6,66 @@ import (
 	"strings"
 )
 
+// InnerListBuilder helps build InnerList objects with proper parameter handling
+type InnerListBuilder struct {
+	innerList *InnerList
+	err       error
+}
+
+// NewInnerListBuilder creates a new InnerListBuilder
+func NewInnerListBuilder() *InnerListBuilder {
+	return &InnerListBuilder{
+		innerList: &InnerList{
+			values: make([]Item, 0),
+			params: nil,
+		},
+	}
+}
+
+// Add adds an item to the inner list
+func (ilb *InnerListBuilder) Add(item any) *InnerListBuilder {
+	if ilb.err != nil {
+		return ilb
+	}
+	
+	if err := ilb.innerList.Add(item); err != nil {
+		ilb.err = fmt.Errorf("failed to add item to inner list: %w", err)
+	}
+	return ilb
+}
+
+// Parameter adds a parameter to the inner list
+func (ilb *InnerListBuilder) Parameter(key string, value BareItem) *InnerListBuilder {
+	if ilb.err != nil {
+		return ilb
+	}
+	
+	if ilb.innerList.params == nil {
+		ilb.innerList.params = &Parameters{Values: make(map[string]BareItem)}
+	}
+	
+	if err := ilb.innerList.params.Set(key, value); err != nil {
+		ilb.err = fmt.Errorf("failed to set parameter %q: %w", key, err)
+	}
+	return ilb
+}
+
+// Build creates the InnerList
+func (ilb *InnerListBuilder) Build() (*InnerList, error) {
+	if ilb.err != nil {
+		return nil, ilb.err
+	}
+	return ilb.innerList, nil
+}
+
+// MustBuild creates the InnerList and panics on error
+func (ilb *InnerListBuilder) MustBuild() *InnerList {
+	if ilb.err != nil {
+		panic(ilb.err)
+	}
+	return ilb.innerList
+}
+
 type InnerList struct {
 	values []Item
 	params *Parameters
