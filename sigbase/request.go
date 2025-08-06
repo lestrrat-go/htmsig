@@ -1,12 +1,12 @@
 package sigbase
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/lestrrat-go/htmsig/input"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -16,8 +16,17 @@ import (
 type RequestBuilder struct {
 	req        *http.Request
 	components []string
-	definition *input.Definition
-	err        error
+	
+	// Signature parameters
+	created   *int64
+	expires   *int64
+	keyid     string
+	algorithm string
+	nonce     *string
+	tag       *string
+	params    map[string]string
+	
+	err error
 }
 
 func Request(req *http.Request) *RequestBuilder {
@@ -35,15 +44,69 @@ func (rb *RequestBuilder) Components(components ...string) *RequestBuilder {
 	return rb
 }
 
-// Definition sets the signature definition containing components and parameters
-func (rb *RequestBuilder) Definition(def *input.Definition) *RequestBuilder {
+// Created sets the created timestamp for signature parameters
+func (rb *RequestBuilder) Created(timestamp int64) *RequestBuilder {
 	if rb.err != nil {
 		return rb
 	}
-	rb.definition = def
-	if def != nil {
-		rb.components = def.Components()
+	rb.created = &timestamp
+	return rb
+}
+
+// Expires sets the expires timestamp for signature parameters
+func (rb *RequestBuilder) Expires(timestamp int64) *RequestBuilder {
+	if rb.err != nil {
+		return rb
 	}
+	rb.expires = &timestamp
+	return rb
+}
+
+// KeyID sets the key identifier for signature parameters
+func (rb *RequestBuilder) KeyID(keyid string) *RequestBuilder {
+	if rb.err != nil {
+		return rb
+	}
+	rb.keyid = keyid
+	return rb
+}
+
+// Algorithm sets the algorithm for signature parameters
+func (rb *RequestBuilder) Algorithm(alg string) *RequestBuilder {
+	if rb.err != nil {
+		return rb
+	}
+	rb.algorithm = alg
+	return rb
+}
+
+// Nonce sets the nonce for signature parameters
+func (rb *RequestBuilder) Nonce(nonce string) *RequestBuilder {
+	if rb.err != nil {
+		return rb
+	}
+	rb.nonce = &nonce
+	return rb
+}
+
+// Tag sets the tag for signature parameters
+func (rb *RequestBuilder) Tag(tag string) *RequestBuilder {
+	if rb.err != nil {
+		return rb
+	}
+	rb.tag = &tag
+	return rb
+}
+
+// Parameter sets a custom parameter for signature parameters
+func (rb *RequestBuilder) Parameter(key, value string) *RequestBuilder {
+	if rb.err != nil {
+		return rb
+	}
+	if rb.params == nil {
+		rb.params = make(map[string]string)
+	}
+	rb.params[key] = value
 	return rb
 }
 
@@ -57,17 +120,14 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 		return nil, fmt.Errorf("HTTP request is required")
 	}
 
-	// Use components from definition or explicit components
+	// Use explicit components
 	components := rb.components
-	if rb.definition != nil {
-		components = rb.definition.Components()
-	}
 
 	if len(components) == 0 {
 		return nil, fmt.Errorf("at least one component is required")
 	}
 
-	var output strings.Builder
+	var output bytes.Buffer
 	seenComponents := make(map[string]bool)
 
 	// Process each covered component
@@ -91,11 +151,11 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 		}
 
 		// Append to signature base: "component-name": value
-		output.WriteString(fmt.Sprintf("%q: %s\n", componentID, value))
+		fmt.Fprintf(&output, "%q: %s\n", componentID, value)
 	}
 
-	// Add signature parameters line if we have a definition
-	if rb.definition != nil {
+	// Add signature parameters line if we have signature parameters
+	if rb.hasSignatureParams() {
 		sigParamsLine, err := rb.buildSignatureParamsLine()
 		if err != nil {
 			return nil, fmt.Errorf("failed to build signature params line: %w", err)
@@ -103,14 +163,14 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 		output.WriteString(sigParamsLine)
 	} else {
 		// Remove trailing newline if no signature params
-		result := output.String()
-		if strings.HasSuffix(result, "\n") {
+		result := output.Bytes()
+		if len(result) > 0 && result[len(result)-1] == '\n' {
 			result = result[:len(result)-1]
 		}
-		return []byte(result), nil
+		return result, nil
 	}
 
-	return []byte(output.String()), nil
+	return output.Bytes(), nil
 }
 
 // parseComponentIdentifier parses a component identifier according to RFC 9421
@@ -123,75 +183,32 @@ func (rb *RequestBuilder) parseComponentIdentifier(componentID string) (string, 
 		return componentName, make(map[string]string), nil
 	}
 
-	// For components with parameters, we need proper parsing
-	// Try to parse as a list with a single item (which should be an SFV string with parameters)
-	listStr := fmt.Sprintf("(%s)", componentID)
-	parsed, err := sfv.Parse([]byte(listStr))
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to parse component identifier with parameters: %w", err)
+	// For components with parameters, parse manually without SFV
+	// Format: "component-name";param=value;param2=value2
+	parts := strings.Split(componentID, ";")
+	if len(parts) < 2 {
+		return "", nil, fmt.Errorf("component identifier with ';' must have parameters")
 	}
 
-	list, ok := parsed.(*sfv.List)
-	if !ok {
-		return "", nil, fmt.Errorf("expected list, got %T", parsed)
-	}
-
-	if list.Len() != 1 {
-		return "", nil, fmt.Errorf("expected single item in list, got %d", list.Len())
-	}
-
-	listItem, ok := list.Get(0)
-	if !ok {
-		return "", nil, fmt.Errorf("failed to get first item from list")
-	}
-
-	innerList, ok := listItem.(*sfv.InnerList)
-	if !ok {
-		return "", nil, fmt.Errorf("expected InnerList, got %T", listItem)
-	}
-
-	if innerList.Len() != 1 {
-		return "", nil, fmt.Errorf("expected single item in inner list, got %d", innerList.Len())
-	}
-
-	item, ok := innerList.Get(0)
-	if !ok {
-		return "", nil, fmt.Errorf("failed to get first item from inner list")
-	}
-
-	// Extract component name (should be a string)
-	var componentName string
-	if err := item.Value(&componentName); err != nil {
-		return "", nil, fmt.Errorf("component identifier must be a string: %w", err)
-	}
-
-	// Extract parameters
+	// First part is component name (remove quotes if present)
+	componentName := strings.Trim(parts[0], "\"")
 	params := make(map[string]string)
-	if itemParams := item.Parameters(); itemParams != nil {
-		for key, paramItem := range itemParams.Values {
-			var paramValue string
-			if err := paramItem.Value(&paramValue); err != nil {
-				// Try other types
-				switch paramItem.Type() {
-				case sfv.IntegerType:
-					var intVal int64
-					if err := paramItem.Value(&intVal); err == nil {
-						paramValue = fmt.Sprintf("%d", intVal)
-					}
-				case sfv.BooleanType:
-					var boolVal bool
-					if err := paramItem.Value(&boolVal); err == nil {
-						if boolVal {
-							paramValue = "1"
-						} else {
-							paramValue = "0"
-						}
-					}
-				default:
-					return "", nil, fmt.Errorf("unsupported parameter type for %q: %v", key, paramItem.Type())
-				}
-			}
-			params[key] = paramValue
+
+	// Parse parameters
+	for i := 1; i < len(parts); i++ {
+		paramStr := strings.TrimSpace(parts[i])
+		if paramStr == "" {
+			continue
+		}
+
+		// Split on '=' to get key=value
+		if eqIdx := strings.Index(paramStr, "="); eqIdx > 0 {
+			key := paramStr[:eqIdx]
+			value := strings.Trim(paramStr[eqIdx+1:], "\"")
+			params[key] = value
+		} else {
+			// Parameter without value (boolean true)
+			params[paramStr] = "1"
 		}
 	}
 
@@ -340,65 +357,14 @@ func (rb *RequestBuilder) getHeaderFieldValue(fieldName string, params map[strin
 
 	// Handle sf parameter (structured field)
 	if _, hasSF := params["sf"]; hasSF {
-		// Parse as structured field and re-serialize
-		combinedValue := strings.Join(values, ", ")
-
-		// Parse the field as structured field
-		parsedSF, err := sfv.Parse([]byte(combinedValue))
-		if err != nil {
-			return "", fmt.Errorf("failed to parse structured field %q: %w", fieldName, err)
-		}
-
-		// Re-marshal to get canonical form
-		var canonicalBytes []byte
-		switch v := parsedSF.(type) {
-		case sfv.Marshaler:
-			canonicalBytes, err = v.MarshalSFV()
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal structured field %q: %w", fieldName, err)
-			}
-		default:
-			return "", fmt.Errorf("parsed structured field %q does not implement Marshaler", fieldName)
-		}
-
-		return string(canonicalBytes), nil
+		// For sf parameter, structured field serialization must be handled by caller
+		return "", fmt.Errorf("structured field (sf) parameter processing requires SFV access from caller")
 	}
 
 	// Handle key parameter for Dictionary fields
 	if keyName, hasKey := params["key"]; hasKey {
-		// Combine all values first
-		combinedValue := strings.Join(values, ", ")
-
-		// Parse as Dictionary
-		parsedDict, err := sfv.Parse([]byte(combinedValue))
-		if err != nil {
-			return "", fmt.Errorf("failed to parse dictionary field %q: %w", fieldName, err)
-		}
-
-		dict, ok := parsedDict.(*sfv.Dictionary)
-		if !ok {
-			return "", fmt.Errorf("field %q is not a Dictionary for key parameter", fieldName)
-		}
-
-		// Get the specific key
-		value, exists := dict.Get(keyName)
-		if !exists {
-			return "", fmt.Errorf("key %q not found in dictionary field %q", keyName, fieldName)
-		}
-
-		// Marshal the specific value
-		var valueBytes []byte
-		switch v := value.(type) {
-		case sfv.Marshaler:
-			valueBytes, err = v.MarshalSFV()
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal dictionary key %q from field %q: %w", keyName, fieldName, err)
-			}
-		default:
-			return "", fmt.Errorf("dictionary key %q from field %q does not implement Marshaler", keyName, fieldName)
-		}
-
-		return string(valueBytes), nil
+		// For key parameter, dictionary field processing must be handled by caller
+		return "", fmt.Errorf("dictionary key parameter processing requires SFV access from caller for key %q", keyName)
 	}
 
 	// Default behavior: concatenate multiple instances with ", " per RFC 9421 Section 2.1.1
@@ -420,17 +386,19 @@ func (rb *RequestBuilder) getHeaderFieldValue(fieldName string, params map[strin
 	return strings.Join(fieldValues, ", "), nil
 }
 
-// buildSignatureParamsLine creates the @signature-params line using proper SFV serialization
-func (rb *RequestBuilder) buildSignatureParamsLine() (string, error) {
-	if rb.definition == nil {
-		return "", fmt.Errorf("signature definition is required")
-	}
 
+// hasSignatureParams checks if signature parameters are set
+func (rb *RequestBuilder) hasSignatureParams() bool {
+	return rb.created != nil || rb.expires != nil || rb.keyid != "" || rb.algorithm != "" || rb.nonce != nil || rb.tag != nil || len(rb.params) > 0
+}
+
+// buildSignatureParamsLine creates the @signature-params line using SFV serialization
+func (rb *RequestBuilder) buildSignatureParamsLine() (string, error) {
 	// Use the InnerList builder to create the signature params line
 	builder := sfv.NewInnerListBuilder()
 
 	// Add each component as a string item to the inner list
-	for _, comp := range rb.definition.Components() {
+	for _, comp := range rb.components {
 		stringItem, err := sfv.String().Value(comp).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create string item for component %q: %w", comp, err)
@@ -439,64 +407,66 @@ func (rb *RequestBuilder) buildSignatureParamsLine() (string, error) {
 	}
 
 	// Add standard parameters
-	if created, ok := rb.definition.Created(); ok {
-		createdItem, err := sfv.Integer().Value(created).Build()
+	if rb.created != nil {
+		createdItem, err := sfv.Integer().Value(*rb.created).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create created parameter: %w", err)
 		}
 		builder.Parameter("created", createdItem)
 	}
 
-	if expires, ok := rb.definition.Expires(); ok {
-		expiresItem, err := sfv.Integer().Value(expires).Build()
+	if rb.expires != nil {
+		expiresItem, err := sfv.Integer().Value(*rb.expires).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create expires parameter: %w", err)
 		}
 		builder.Parameter("expires", expiresItem)
 	}
 
-	if rb.definition.KeyID() != "" {
-		keyidItem, err := sfv.String().Value(rb.definition.KeyID()).Build()
+	if rb.keyid != "" {
+		keyidItem, err := sfv.String().Value(rb.keyid).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create keyid parameter: %w", err)
 		}
 		builder.Parameter("keyid", keyidItem)
 	}
 
-	if rb.definition.Algorithm() != "" {
-		algItem, err := sfv.String().Value(rb.definition.Algorithm()).Build()
+	if rb.algorithm != "" {
+		algItem, err := sfv.String().Value(rb.algorithm).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create alg parameter: %w", err)
 		}
 		builder.Parameter("alg", algItem)
 	}
 
-	if nonce, ok := rb.definition.Nonce(); ok {
-		nonceItem, err := sfv.String().Value(nonce).Build()
+	if rb.nonce != nil {
+		nonceItem, err := sfv.String().Value(*rb.nonce).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create nonce parameter: %w", err)
 		}
 		builder.Parameter("nonce", nonceItem)
 	}
 
-	if tag, ok := rb.definition.Tag(); ok {
-		tagItem, err := sfv.String().Value(tag).Build()
+	if rb.tag != nil {
+		tagItem, err := sfv.String().Value(*rb.tag).Build()
 		if err != nil {
 			return "", fmt.Errorf("failed to create tag parameter: %w", err)
 		}
 		builder.Parameter("tag", tagItem)
 	}
 
-	// Add additional parameters from the definition
-	if defParams := rb.definition.Parameters(); defParams != nil {
-		for key, value := range defParams.Values {
-			// Skip standard parameters to avoid duplicates
-			switch key {
-			case "created", "expires", "keyid", "alg", "nonce", "tag":
-				continue
-			}
-			builder.Parameter(key, value)
+	// Add additional parameters
+	for key, value := range rb.params {
+		// Skip standard parameters to avoid duplicates (shouldn't happen but be safe)
+		switch key {
+		case "created", "expires", "keyid", "alg", "nonce", "tag":
+			continue
 		}
+		stringItem, err := sfv.String().Value(value).Build()
+		if err != nil {
+			return "", fmt.Errorf("failed to create parameter %q: %w", key, err)
+		}
+		builder.Parameter(key, stringItem)
 	}
 
 	// Build the inner list
@@ -513,4 +483,9 @@ func (rb *RequestBuilder) buildSignatureParamsLine() (string, error) {
 
 	// Build the final line: "@signature-params": (components);params
 	return fmt.Sprintf("\"@signature-params\": %s", string(innerListBytes)), nil
+}
+
+// GetSignatureParams returns the raw signature parameter data for SFV serialization
+func (rb *RequestBuilder) GetSignatureParams() (components []string, created *int64, expires *int64, keyid, algorithm string, nonce, tag *string, params map[string]string) {
+	return rb.components, rb.created, rb.expires, rb.keyid, rb.algorithm, rb.nonce, rb.tag, rb.params
 }
