@@ -10,6 +10,12 @@ import (
 	"github.com/lestrrat-go/htmsig/internal/sfv/internal/tokens"
 )
 
+// RFC 9651 Section 3.3.1: Integers have at most 15 decimal digits
+const (
+	maxIntegerDigits = 15
+	maxSFVInteger    = 999999999999999
+)
+
 type parseContext struct {
 	idx   int // current index in the data
 	size  int // size of the data
@@ -564,7 +570,7 @@ LOOP:
 		return bareItem, nil
 	}
 
-	if sb.Len() > 15 {
+	if sb.Len() > maxIntegerDigits {
 		return nil, fmt.Errorf(`sfv: failed to parse numeric value: too many (%d) digits for integer number`, sb.Len())
 	}
 

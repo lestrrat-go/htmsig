@@ -51,12 +51,19 @@ func valueToSFV(v any) (any, error) {
 		}
 		return False(), nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return Integer().Value(rv.Int()).Build()
+		val := rv.Int()
+		// RFC 9651: integers can have at most 15 decimal digits
+		// For negative numbers, this includes the minus sign, so the absolute value can be at most 14 digits
+		// But actually, the spec says 15 digits for the integer itself, sign doesn't count toward digit limit
+		if val > maxSFVInteger || val < -maxSFVInteger {
+			return nil, fmt.Errorf("int value %d too large to marshal as SFV integer (max 15 decimal digits)", val)
+		}
+		return Integer().Value(val).Build()
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		val := rv.Uint()
-		if val > 9223372036854775807 { // max int64
-			return nil, fmt.Errorf("uint value %d too large to marshal as SFV integer", val)
+		if val > maxSFVInteger { // RFC 9651: max 15 decimal digits
+			return nil, fmt.Errorf("uint value %d too large to marshal as SFV integer (max 15 decimal digits)", val)
 		}
 		return Integer().Value(int64(val)).Build()
 

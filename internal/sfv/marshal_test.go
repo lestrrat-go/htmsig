@@ -163,6 +163,31 @@ func TestMarshal(t *testing.T) {
 			input:   uint64(9223372036854775808), // max int64 + 1
 			wantErr: true,
 		},
+		{
+			name:     "Uint64 with 15 digits - should work",
+			input:    uint64(999999999999999), // exactly 15 digits
+			expected: "999999999999999",
+		},
+		{
+			name:    "Uint64 with 16 digits - should fail",
+			input:   uint64(1000000000000000), // 16 digits
+			wantErr: true,
+		},
+		{
+			name:     "Int64 with 15 digits positive - should work",
+			input:    int64(999999999999999), // exactly 15 digits
+			expected: "999999999999999",
+		},
+		{
+			name:     "Int64 with 15 digits negative - should work",
+			input:    int64(-999999999999999), // exactly 15 digits
+			expected: "-999999999999999",
+		},
+		{
+			name:    "Int64 with 16 digits - should fail",
+			input:   int64(1000000000000000), // 16 digits
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

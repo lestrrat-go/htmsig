@@ -73,6 +73,25 @@ func TestParseSignatureInput(t *testing.T) {
 				).
 				MustBuild(),
 		},
+		{
+			name:  "Signature with arbitrary parameters",
+			input: `sig1=("@method" "@authority");created=1618884473;keyid="test-key";alg="rsa-pss-sha256";priority=5;region="us-east-1";debug=?1;custom-header="custom-value"`,
+			expected: input.NewValueBuilder().
+				AddDefinition(
+					input.NewDefinitionBuilder().
+						Label("sig1").
+						Components(input.MethodComponent, input.AuthorityComponent).
+						KeyID("test-key").
+						Algorithm("rsa-pss-sha256").
+						Created(1618884473).
+						Parameter("priority", int64(5)).
+						Parameter("region", "us-east-1").
+						Parameter("debug", true).
+						Parameter("custom-header", "custom-value").
+						MustBuild(),
+				).
+				MustBuild(),
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,6 +137,20 @@ func TestParseSignatureInput(t *testing.T) {
 				require.Equal(t, expectedHasTag, actualHasTag, "Tag presence should match")
 				if expectedHasTag {
 					require.Equal(t, expectedTag, actualTag, "Tag should match")
+				}
+
+				// Check arbitrary parameters
+				expectedParams := expectedDef.Parameters()
+				actualParams := actualDef.Parameters()
+
+				// Compare parameter counts (ignoring standard parameters like created, expires, etc.)
+				require.Equal(t, len(expectedParams.Values), len(actualParams.Values), "Number of arbitrary parameters should match")
+
+				// Check each arbitrary parameter
+				for key, expectedValue := range expectedParams.Values {
+					actualValue, exists := actualParams.Values[key]
+					require.True(t, exists, "Parameter %s should exist", key)
+					require.Equal(t, expectedValue, actualValue, "Parameter %s value should match", key)
 				}
 			}
 		})
@@ -177,8 +210,8 @@ func TestValueManagement(t *testing.T) {
 
 func TestMarshalSFVRoundtrip(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
+		name  string
+		input string
 	}{
 		{
 			name:  "Single signature with basic parameters",
@@ -192,6 +225,10 @@ func TestMarshalSFVRoundtrip(t *testing.T) {
 			name:  "Signature with all optional parameters",
 			input: `sig1=("@method");created=1618884473;expires=1618888073;nonce="b3c2a1";keyid="test-key";alg="rsa-pss-sha256";tag="example"`,
 		},
+		{
+			name:  "Signature with arbitrary parameters",
+			input: `sig1=("@method" "@authority");created=1618884473;keyid="test-key";alg="rsa-pss-sha256";priority=5;region="us-east-1";debug=?1;custom-header="custom-value"`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -199,26 +236,26 @@ func TestMarshalSFVRoundtrip(t *testing.T) {
 			// Parse the input
 			value, err := input.Parse([]byte(tt.input))
 			require.NoError(t, err, "Parse should succeed")
-			
+
 			// Marshal it back
 			marshaled, err := value.MarshalSFV()
 			require.NoError(t, err, "MarshalSFV should succeed")
-			
+
 			// Parse the marshaled result
 			reparsed, err := input.Parse(marshaled)
 			require.NoError(t, err, "Reparsing marshaled result should succeed")
-			
+
 			// Verify they're equivalent
 			require.Equal(t, value.Len(), reparsed.Len(), "Number of definitions should match")
-			
+
 			for i, originalDef := range value.Definitions() {
 				reparsedDef := reparsed.Definitions()[i]
-				
+
 				require.Equal(t, originalDef.Label(), reparsedDef.Label(), "Label should match")
 				require.Equal(t, originalDef.Components(), reparsedDef.Components(), "Components should match")
 				require.Equal(t, originalDef.KeyID(), reparsedDef.KeyID(), "KeyID should match")
 				require.Equal(t, originalDef.Algorithm(), reparsedDef.Algorithm(), "Algorithm should match")
-				
+
 				// Check optional parameters
 				originalCreated, originalHasCreated := originalDef.Created()
 				reparsedCreated, reparsedHasCreated := reparsedDef.Created()
@@ -226,21 +263,21 @@ func TestMarshalSFVRoundtrip(t *testing.T) {
 				if originalHasCreated {
 					require.Equal(t, originalCreated, reparsedCreated, "Created timestamp should match")
 				}
-				
+
 				originalExpires, originalHasExpires := originalDef.Expires()
 				reparsedExpires, reparsedHasExpires := reparsedDef.Expires()
 				require.Equal(t, originalHasExpires, reparsedHasExpires, "Expires presence should match")
 				if originalHasExpires {
 					require.Equal(t, originalExpires, reparsedExpires, "Expires timestamp should match")
 				}
-				
+
 				originalNonce, originalHasNonce := originalDef.Nonce()
 				reparsedNonce, reparsedHasNonce := reparsedDef.Nonce()
 				require.Equal(t, originalHasNonce, reparsedHasNonce, "Nonce presence should match")
 				if originalHasNonce {
 					require.Equal(t, originalNonce, reparsedNonce, "Nonce should match")
 				}
-				
+
 				originalTag, originalHasTag := originalDef.Tag()
 				reparsedTag, reparsedHasTag := reparsedDef.Tag()
 				require.Equal(t, originalHasTag, reparsedHasTag, "Tag presence should match")
@@ -264,14 +301,14 @@ func TestDefinitionMarshalSFV(t *testing.T) {
 		Tag("example").
 		Parameter("custom", "value").
 		MustBuild()
-	
+
 	// Marshal the definition
 	marshaled, err := def.MarshalSFV()
 	require.NoError(t, err, "MarshalSFV should succeed")
-	
+
 	// Should be an InnerList with components and parameters
 	t.Logf("Marshaled definition: %s", string(marshaled))
-	
+
 	// Parse it to verify it's valid SFV
 	result, err := input.Parse([]byte(`test=` + string(marshaled)))
 	require.NoError(t, err, "Should be able to parse marshaled definition")
