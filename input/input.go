@@ -131,54 +131,54 @@ func Parse(data []byte) (*Value, error) {
 		if params != nil {
 			// Extract standard parameters
 			if created, exists := params.Values["created"]; exists {
-				if createdInt, ok := created.(*sfv.Integer); ok {
+				if created.Type() == sfv.IntegerType {
 					var timestamp int64
-					if err := createdInt.Value(&timestamp); err == nil {
+					if err := created.Value(&timestamp); err == nil {
 						defBuilder.Created(timestamp)
 					}
 				}
 			}
 			
 			if expires, exists := params.Values["expires"]; exists {
-				if expiresInt, ok := expires.(*sfv.Integer); ok {
+				if expires.Type() == sfv.IntegerType {
 					var timestamp int64
-					if err := expiresInt.Value(&timestamp); err == nil {
+					if err := expires.Value(&timestamp); err == nil {
 						defBuilder.Expires(timestamp)
 					}
 				}
 			}
 			
 			if keyid, exists := params.Values["keyid"]; exists {
-				if keyidStr, ok := keyid.(*sfv.String); ok {
+				if keyid.Type() == sfv.StringType {
 					var keyID string
-					if err := keyidStr.Value(&keyID); err == nil {
+					if err := keyid.Value(&keyID); err == nil {
 						defBuilder.KeyID(keyID)
 					}
 				}
 			}
 			
 			if alg, exists := params.Values["alg"]; exists {
-				if algStr, ok := alg.(*sfv.String); ok {
+				if alg.Type() == sfv.StringType {
 					var algorithm string
-					if err := algStr.Value(&algorithm); err == nil {
+					if err := alg.Value(&algorithm); err == nil {
 						defBuilder.Algorithm(algorithm)
 					}
 				}
 			}
 			
 			if nonce, exists := params.Values["nonce"]; exists {
-				if nonceStr, ok := nonce.(*sfv.String); ok {
+				if nonce.Type() == sfv.StringType {
 					var nonceVal string
-					if err := nonceStr.Value(&nonceVal); err == nil {
+					if err := nonce.Value(&nonceVal); err == nil {
 						defBuilder.Nonce(nonceVal)
 					}
 				}
 			}
 			
 			if tag, exists := params.Values["tag"]; exists {
-				if tagStr, ok := tag.(*sfv.String); ok {
+				if tag.Type() == sfv.StringType {
 					var tagVal string
-					if err := tagStr.Value(&tagVal); err == nil {
+					if err := tag.Value(&tagVal); err == nil {
 						defBuilder.Tag(tagVal)
 					}
 				}
@@ -205,4 +205,55 @@ func Parse(data []byte) (*Value, error) {
 	}
 	
 	return builder.Build()
+}
+
+// MarshalSFV implements the sfv.Marshaler interface for Value
+// A Value marshals to a Dictionary with signature labels as keys and InnerLists as values
+func (v *Value) MarshalSFV() ([]byte, error) {
+	// Create a dictionary
+	dict := sfv.NewDictionary()
+	
+	// Add each definition to the dictionary
+	for _, def := range v.definitions {
+		// Marshal the definition to get the InnerList bytes
+		defBytes, err := def.MarshalSFV()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal definition %q: %w", def.Label(), err)
+		}
+		
+		// Parse the definition bytes as an InnerList
+		// Since we know it's an InnerList from our MarshalSFV implementation,
+		// we can parse it back
+		result, err := sfv.Parse(defBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse marshaled definition %q: %w", def.Label(), err)
+		}
+		
+		// The parser returns a List, but for single InnerList, we need to extract it
+		var innerList *sfv.InnerList
+		switch v := result.(type) {
+		case *sfv.InnerList:
+			innerList = v
+		case *sfv.List:
+			// Extract the first (and only) element if it's an InnerList
+			if v.Len() == 1 {
+				if elem, ok := v.Get(0); ok {
+					if il, ok := elem.(*sfv.InnerList); ok {
+						innerList = il
+					}
+				}
+			}
+		}
+		
+		if innerList == nil {
+			return nil, fmt.Errorf("expected InnerList for definition %q, got %T", def.Label(), result)
+		}
+		
+		// Set the definition in the dictionary
+		if err := dict.Set(def.Label(), innerList); err != nil {
+			return nil, fmt.Errorf("failed to set definition %q in dictionary: %w", def.Label(), err)
+		}
+	}
+	
+	return dict.MarshalSFV()
 }

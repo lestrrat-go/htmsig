@@ -1,6 +1,7 @@
 package input
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -43,7 +44,7 @@ type DefinitionBuilder struct {
 func NewDefinitionBuilder() *DefinitionBuilder {
 	return &DefinitionBuilder{
 		def: &Definition{
-			additionalParams: &sfv.Parameters{Values: make(map[string]sfv.Item)},
+			additionalParams: &sfv.Parameters{Values: make(map[string]sfv.BareItem)},
 		},
 	}
 }
@@ -113,32 +114,57 @@ func (b *DefinitionBuilder) Tag(tag string) *DefinitionBuilder {
 // Parameter sets an additional parameter
 func (b *DefinitionBuilder) Parameter(key string, value any) *DefinitionBuilder {
 	if b.def.additionalParams == nil {
-		b.def.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.Item)}
+		b.def.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.BareItem)}
 	}
 	
-	// Convert any value to sfv.Item
-	var item sfv.Item
+	// Convert any value to sfv.BareItem
+	var bareItem sfv.BareItem
+	var err error
 	switch v := value.(type) {
+	case sfv.BareItem:
+		bareItem = v
 	case sfv.Item:
-		item = v
+		bareItem = v // Item implements BareItem interface
 	case bool:
-		item = sfv.NewBoolean().SetValue(v)
+		if v {
+			bareItem = sfv.True()
+		} else {
+			bareItem = sfv.False()
+		}
 	case int:
-		item = sfv.NewInteger().SetValue(int64(v))
+		bareItem, err = sfv.Integer().Value(int64(v)).Build()
+		if err != nil {
+			return b // silently fail for now
+		}
 	case int64:
-		item = sfv.NewInteger().SetValue(v)
+		bareItem, err = sfv.Integer().Value(v).Build()
+		if err != nil {
+			return b
+		}
 	case float64:
-		item = sfv.NewDecimal().SetValue(v)
+		bareItem, err = sfv.Decimal().Value(v).Build()
+		if err != nil {
+			return b
+		}
 	case string:
-		item = sfv.NewString().SetValue(v)
+		bareItem, err = sfv.String().Value(v).Build()
+		if err != nil {
+			return b
+		}
 	case []byte:
-		item = sfv.NewByteSequence().SetValue(v)
+		bareItem, err = sfv.ByteSequence().Value(v).Build()
+		if err != nil {
+			return b
+		}
 	default:
 		// Default to string conversion
-		item = sfv.NewString().SetValue(fmt.Sprintf("%v", v))
+		bareItem, err = sfv.String().Value(fmt.Sprintf("%v", v)).Build()
+		if err != nil {
+			return b
+		}
 	}
 	
-	b.def.additionalParams.Values[key] = item
+	b.def.additionalParams.Values[key] = bareItem
 	return b
 }
 
@@ -336,32 +362,57 @@ func (d *Definition) Parameter(key string) any {
 // SetParameter sets an additional parameter
 func (d *Definition) SetParameter(key string, value any) *Definition {
 	if d.additionalParams == nil {
-		d.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.Item)}
+		d.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.BareItem)}
 	}
 	
-	// Convert any value to sfv.Item
-	var item sfv.Item
+	// Convert any value to sfv.BareItem
+	var bareItem sfv.BareItem
+	var err error
 	switch v := value.(type) {
+	case sfv.BareItem:
+		bareItem = v
 	case sfv.Item:
-		item = v
+		bareItem = v // Item implements BareItem interface
 	case bool:
-		item = sfv.NewBoolean().SetValue(v)
+		if v {
+			bareItem = sfv.True()
+		} else {
+			bareItem = sfv.False()
+		}
 	case int:
-		item = sfv.NewInteger().SetValue(int64(v))
+		bareItem, err = sfv.Integer().Value(int64(v)).Build()
+		if err != nil {
+			return d // silently fail for now
+		}
 	case int64:
-		item = sfv.NewInteger().SetValue(v)
+		bareItem, err = sfv.Integer().Value(v).Build()
+		if err != nil {
+			return d
+		}
 	case float64:
-		item = sfv.NewDecimal().SetValue(v)
+		bareItem, err = sfv.Decimal().Value(v).Build()
+		if err != nil {
+			return d
+		}
 	case string:
-		item = sfv.NewString().SetValue(v)
+		bareItem, err = sfv.String().Value(v).Build()
+		if err != nil {
+			return d
+		}
 	case []byte:
-		item = sfv.NewByteSequence().SetValue(v)
+		bareItem, err = sfv.ByteSequence().Value(v).Build()
+		if err != nil {
+			return d
+		}
 	default:
 		// Default to string conversion
-		item = sfv.NewString().SetValue(fmt.Sprintf("%v", v))
+		bareItem, err = sfv.String().Value(fmt.Sprintf("%v", v)).Build()
+		if err != nil {
+			return d
+		}
 	}
 	
-	d.additionalParams.Values[key] = item
+	d.additionalParams.Values[key] = bareItem
 	return d
 }
 
@@ -404,4 +455,66 @@ func (d *Definition) ExpiresTime() (time.Time, bool) {
 // SetExpiresTime sets the expires timestamp from a time.Time
 func (d *Definition) SetExpiresTime(t time.Time) *Definition {
 	return d.SetExpires(t.Unix())
+}
+
+// MarshalSFV implements the sfv.Marshaler interface for Definition
+// A Definition marshals to an InnerList with components and parameters
+func (d *Definition) MarshalSFV() ([]byte, error) {
+	// Create parameters
+	params := &sfv.Parameters{Values: make(map[string]sfv.BareItem)}
+	
+	// Add standard parameters
+	if d.created != nil {
+		params.Values["created"] = sfv.Integer().Value(*d.created).MustBuild()
+	}
+	if d.expires != nil {
+		params.Values["expires"] = sfv.Integer().Value(*d.expires).MustBuild()
+	}
+	if d.keyid != "" {
+		params.Values["keyid"] = sfv.String().Value(d.keyid).MustBuild()
+	}
+	if d.algorithm != "" {
+		params.Values["alg"] = sfv.String().Value(d.algorithm).MustBuild()
+	}
+	if d.nonce != nil {
+		params.Values["nonce"] = sfv.String().Value(*d.nonce).MustBuild()
+	}
+	if d.tag != nil {
+		params.Values["tag"] = sfv.String().Value(*d.tag).MustBuild()
+	}
+	
+	// Add additional parameters
+	if d.additionalParams != nil && d.additionalParams.Values != nil {
+		for key, value := range d.additionalParams.Values {
+			params.Values[key] = value
+		}
+	}
+	
+	// Marshal as InnerList manually
+	var buf bytes.Buffer
+	buf.WriteByte('(')
+	
+	for i, component := range d.components {
+		if i > 0 {
+			buf.WriteByte(' ')
+		}
+		componentBytes, err := sfv.String().Value(component).MustBuild().MarshalSFV()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal component %q: %w", component, err)
+		}
+		buf.Write(componentBytes)
+	}
+	
+	buf.WriteByte(')')
+	
+	// Add parameters if any exist
+	if len(params.Values) > 0 {
+		paramBytes, err := params.MarshalSFV()
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal parameters: %w", err)
+		}
+		buf.Write(paramBytes)
+	}
+	
+	return buf.Bytes(), nil
 }

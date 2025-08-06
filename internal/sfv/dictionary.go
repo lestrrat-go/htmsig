@@ -19,10 +19,10 @@ func NewDictionary() *Dictionary {
 
 func (d *Dictionary) Set(key string, value any) error {
 	switch value.(type) {
-	case Item, *InnerList:
+	case Item, BareItem, *InnerList:
 		// ok. no op
 	default:
-		return fmt.Errorf("value must be of type Item or *InnerList, got %T", value)
+		return fmt.Errorf("value must be of type Item, BareItem, or *InnerList, got %T", value)
 	}
 
 	if _, exists := d.values[key]; !exists {
@@ -55,10 +55,20 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 
 		// Check if this is a Boolean true value (bare key)
 		isBareKey := false
-		if item, ok := value.(Item); ok && item.Type() == BooleanType {
-			var b bool
-			if err := item.Value(&b); err == nil && b {
-				isBareKey = true
+		switch v := value.(type) {
+		case Item:
+			if v.Type() == BooleanType {
+				var b bool
+				if err := v.Value(&b); err == nil && b {
+					isBareKey = true
+				}
+			}
+		case BareItem:
+			if v.Type() == BooleanType {
+				var b bool
+				if err := v.Value(&b); err == nil && b {
+					isBareKey = true
+				}
 			}
 		}
 
@@ -72,6 +82,7 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 				}
 				sb.Write(paramBytes)
 			}
+			// BareItems don't have parameters, so no need to handle that case
 		} else {
 			// Regular values - include equals and full marshaling
 			sb.WriteByte('=')
@@ -81,6 +92,10 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 			switch v := value.(type) {
 			case Item:
 				valueBytes, err = v.MarshalSFV()
+			case BareItem:
+				// Convert BareItem to Item for marshaling
+				item := v.With(nil)
+				valueBytes, err = item.MarshalSFV()
 			case *InnerList:
 				valueBytes, err = v.MarshalSFV()
 			default:

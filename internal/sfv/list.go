@@ -2,12 +2,27 @@ package sfv
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 )
 
 type InnerList struct {
 	values []Item
 	params *Parameters
+}
+
+func (il *InnerList) Add(in any) error {
+	var item Item
+	switch v := in.(type) {
+	case Item:
+		item = v
+	case BareItem:
+		item = v.With(nil)
+	default:
+		return fmt.Errorf("item must be of type Item or BareItem, got %T", item)
+	}
+	il.values = append(il.values, item)
+	return nil
 }
 
 // Len returns the number of values in the inner list
@@ -73,6 +88,21 @@ func (il *InnerList) Parameters() *Parameters {
 
 type List struct {
 	values []any
+}
+
+func (l *List) Add(in any) error {
+	// Process the input to ensure it's a proper SFV item
+	switch v := in.(type) {
+	case Item:
+		l.values = append(l.values, v)
+	case BareItem:
+		l.values = append(l.values, v.With(nil))
+	case *InnerList:
+		l.values = append(l.values, v)
+	default:
+		return fmt.Errorf("list item must be of type Item, BareItem, or *InnerList, got %T", in)
+	}
+	return nil
 }
 
 // MarshalSFV implements the Marshaler interface for List

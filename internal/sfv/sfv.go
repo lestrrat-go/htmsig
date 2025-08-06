@@ -1,7 +1,6 @@
 package sfv
 
 import (
-	"bytes"
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -211,7 +210,7 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 			}
 		} else {
 			// No value specified, create a boolean Item with true value
-			value = NewBoolean().SetValue(true)
+			value = True()
 		}
 
 		// Parse parameters for the dictionary member
@@ -220,9 +219,15 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 			return nil, fmt.Errorf("sfv: parse dictionary parameters: %w", err)
 		}
 
-		// If the value is an Item, add parameters to it
-		if item, ok := value.(Item); ok && params.Len() > 0 {
-			item.With(params)
+		// If the value has parameters, ensure it's an Item
+		if params.Len() > 0 {
+			switch v := value.(type) {
+			case Item:
+				v.With(params)
+			case BareItem:
+				// Convert BareItem to Item when parameters are present
+				value = v.With(params)
+			}
 		}
 
 		dict.keys = append(dict.keys, key)
@@ -252,71 +257,6 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 	}
 
 	return dict, nil
-}
-
-type Parameters struct {
-	keys []string
-
-	// Values are a map of parameters to their values, where values are
-	// bare items
-	Values map[string]Item
-}
-
-func (p *Parameters) Len() int {
-	if p == nil {
-		return 0
-	}
-	// Use Values map length if keys slice is empty but Values has data
-	if len(p.keys) == 0 && len(p.Values) > 0 {
-		return len(p.Values)
-	}
-	return len(p.keys)
-}
-
-func (p *Parameters) MarshalSFV() ([]byte, error) {
-	if p == nil || p.Len() == 0 {
-		return []byte{}, nil
-	}
-
-	var buf bytes.Buffer
-	// Ensure keys slice is populated from Values map if needed
-	if len(p.keys) == 0 && len(p.Values) > 0 {
-		for key := range p.Values {
-			p.keys = append(p.keys, key)
-		}
-	}
-
-	for _, key := range p.keys {
-		buf.WriteByte(';')
-		buf.WriteByte(' ')  // Always add space after semicolon for consistency
-		buf.WriteString(key)
-
-		value, exists := p.Values[key]
-		if !exists {
-			continue
-		}
-
-		// Only add '=' if the value is not Boolean true
-		if value.Type() == BooleanType {
-			var boolVal bool
-			if err := value.Value(&boolVal); err != nil {
-				return nil, fmt.Errorf("error getting boolean value for parameter %q: %w", key, err)
-			}
-			if boolVal {
-				// Boolean true parameters can be represented as bare keys
-				continue
-			}
-		}
-
-		buf.WriteByte('=')
-		marshaledParam, err := value.MarshalSFV()
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling parameter value %q: %w", key, err)
-		}
-		buf.Write(marshaledParam)
-	}
-
-	return buf.Bytes(), nil
 }
 
 func (p *parseContext) parseInnerList() (*InnerList, error) {
@@ -407,7 +347,7 @@ func isLowerAlpha(c byte) bool {
 func (p *parseContext) parseParameters() (*Parameters, error) {
 	// RFC 9651 Section 4.2.3.2: Parsing Parameters
 	var keys []string
-	var values map[string]Item
+	var values map[string]BareItem
 
 	for !p.eof() {
 		// 1. If the first character of input_string is not ";", exit the loop.
@@ -428,7 +368,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 		}
 
 		// 5. Let param_value be Boolean true.
-		var paramValue Item = NewBoolean().SetValue(true)
+		var paramValue BareItem = True()
 
 		// 6. If the first character of input_string is "=":
 		if !p.eof() && p.current() == tokens.Equals {
@@ -445,7 +385,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 
 		// Initialize maps on first parameter
 		if values == nil {
-			values = make(map[string]Item)
+			values = make(map[string]BareItem)
 		}
 
 		// 7. If parameters already contains a key param_key (comparing character for character),
@@ -460,7 +400,7 @@ func (p *parseContext) parseParameters() (*Parameters, error) {
 
 	// Only create Parameters object if we actually have parameters
 	if len(keys) == 0 {
-		return &Parameters{Values: make(map[string]Item)}, nil
+		return &Parameters{Values: make(map[string]BareItem)}, nil
 	}
 
 	return &Parameters{
@@ -503,7 +443,7 @@ func isAlpha(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-func (p *parseContext) parseBareItem() (Item, error) {
+func (p *parseContext) parseBareItem() (BareItem, error) {
 	p.stripWhitespace()
 	switch c := p.current(); {
 	case c == '-' || isDigit(c):
@@ -553,7 +493,7 @@ func (p *parseContext) parseBareItem() (Item, error) {
 	}
 }
 
-func (p *parseContext) parseDecimal() (Item, error) {
+func (p *parseContext) parseDecimal() (BareItem, error) {
 	var decimal bool
 	sign := 1
 
@@ -617,7 +557,11 @@ LOOP:
 		if err != nil {
 			return nil, fmt.Errorf(`sfv: failed to parse numeric value as float: %w`, err)
 		}
-		return NewDecimal().SetValue(v * float64(sign)), nil
+		bareItem, err := Decimal().Value(v * float64(sign)).Build()
+		if err != nil {
+			return nil, err
+		}
+		return bareItem, nil
 	}
 
 	if sb.Len() > 15 {
@@ -628,11 +572,15 @@ LOOP:
 	if err != nil {
 		return nil, fmt.Errorf(`sfv: failed to parse numeric value as integer: %w`, err)
 	}
-	return NewInteger().SetValue(int64(v * sign)), nil
+	bareItem, err := Integer().Value(int64(v * sign)).Build()
+	if err != nil {
+		return nil, err
+	}
+	return bareItem, nil
 }
 
 // parseString parses a quoted string according to RFC 9651 Section 4.2.5
-func (p *parseContext) parseString() (*String, error) {
+func (p *parseContext) parseString() (BareItem, error) {
 	if p.current() != tokens.DoubleQuote {
 		return nil, fmt.Errorf("sfv: expected quote at start of string")
 	}
@@ -654,8 +602,7 @@ func (p *parseContext) parseString() (*String, error) {
 			p.advance()
 			sb.WriteByte(next)
 		} else if c == tokens.DoubleQuote {
-			s := NewString().SetValue(sb.String())
-			return s, nil
+			return String().Value(sb.String()).Build()
 		} else if c <= 0x1f || c >= 0x7f {
 			return nil, fmt.Errorf("sfv: invalid character in string: %c", c)
 		} else {
@@ -666,7 +613,7 @@ func (p *parseContext) parseString() (*String, error) {
 }
 
 // parseToken parses a token according to RFC 9651 Section 4.2.6
-func (p *parseContext) parseToken() (*Token, error) {
+func (p *parseContext) parseToken() (*TokenBareItem, error) {
 	c := p.current()
 	if !isAlpha(c) && c != tokens.Asterisk {
 		return nil, fmt.Errorf("sfv: token must start with alpha or asterisk")
@@ -689,11 +636,15 @@ func (p *parseContext) parseToken() (*Token, error) {
 	if sb.Len() == 0 {
 		return nil, fmt.Errorf("sfv: empty token")
 	}
-	return NewToken().SetValue(sb.String()), nil
+	bareItem, err := Token().Value(sb.String()).Build()
+	if err != nil {
+		return nil, err
+	}
+	return bareItem, nil
 }
 
 // parseByteSequence parses a byte sequence according to RFC 9651 Section 4.2.7
-func (p *parseContext) parseByteSequence() (*ByteSequence, error) {
+func (p *parseContext) parseByteSequence() (*ByteSequenceBareItem, error) {
 	if p.current() != tokens.Colon {
 		return nil, fmt.Errorf("sfv: expected colon at start of byte sequence")
 	}
@@ -726,18 +677,22 @@ func (p *parseContext) parseByteSequence() (*ByteSequence, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sfv: failed to decode base64: %w", err)
 	}
-	return NewByteSequence().SetValue(decoded), nil
+	bareItem, err := ByteSequence().Value(decoded).Build()
+	if err != nil {
+		return nil, err
+	}
+	return bareItem, nil
 }
 
 // parseBoolean parses a boolean according to RFC 9651 Section 4.2.8
-func (p *parseContext) parseBoolean() (*Boolean, error) {
+func (p *parseContext) parseBoolean() (BooleanBareItem, error) {
 	if p.current() != tokens.QuestionMark {
-		return nil, fmt.Errorf("sfv: expected question mark at start of boolean")
+		return False(), fmt.Errorf("sfv: expected question mark at start of boolean")
 	}
 	p.advance() // consume question mark
 
 	if p.eof() {
-		return nil, fmt.Errorf("sfv: unexpected end of input, expected boolean value")
+		return False(), fmt.Errorf("sfv: unexpected end of input, expected boolean value")
 	}
 
 	c := p.current()
@@ -745,16 +700,16 @@ func (p *parseContext) parseBoolean() (*Boolean, error) {
 
 	switch c {
 	case tokens.One:
-		return &Boolean{value: true}, nil
+		return True(), nil
 	case tokens.Zero:
-		return &Boolean{value: false}, nil
+		return False(), nil
 	default:
-		return nil, fmt.Errorf("sfv: invalid boolean value, expected '0' or '1', got %c", c)
+		return False(), fmt.Errorf("sfv: invalid boolean value, expected '0' or '1', got %c", c)
 	}
 }
 
 // parseDate parses a date according to RFC 9651 Section 4.2.9
-func (p *parseContext) parseDate() (*Date, error) {
+func (p *parseContext) parseDate() (*DateBareItem, error) {
 	if p.current() != tokens.AtMark {
 		return nil, fmt.Errorf("sfv: expected @ at start of date")
 	}
@@ -776,11 +731,15 @@ func (p *parseContext) parseDate() (*Date, error) {
 		return nil, fmt.Errorf("sfv: failed to convert date value to int64: %w", err)
 	}
 
-	return NewDate().SetValue(intValue), nil
+	bareItem, err := Date().Value(intValue).Build()
+	if err != nil {
+		return nil, err
+	}
+	return bareItem, nil
 }
 
 // parseDisplayString parses a display string according to RFC 9651 Section 4.2.10
-func (p *parseContext) parseDisplayString() (*DisplayString, error) {
+func (p *parseContext) parseDisplayString() (*DisplayStringBareItem, error) {
 	// Expect %"
 	if p.current() != tokens.Percent {
 		return nil, fmt.Errorf("sfv: expected %% at start of display string")
@@ -824,7 +783,11 @@ func (p *parseContext) parseDisplayString() (*DisplayString, error) {
 		} else if c == tokens.DoubleQuote {
 			// End of display string
 			// Decode as UTF-8
-			return NewDisplayString().SetValue(string(byteArray)), nil
+			bareItem, err := DisplayString().Value(string(byteArray)).Build()
+			if err != nil {
+				return nil, err
+			}
+			return bareItem, nil
 		} else {
 			// Regular ASCII character
 			byteArray = append(byteArray, c)

@@ -174,3 +174,106 @@ func TestValueManagement(t *testing.T) {
 	_, ok = v.GetDefinition("nonexistent")
 	require.False(t, ok, "Should not find nonexistent definition")
 }
+
+func TestMarshalSFVRoundtrip(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+	}{
+		{
+			name:  "Single signature with basic parameters",
+			input: `sig1=("@method" "@target-uri" "@authority" "content-digest");created=1618884473;keyid="test-key-rsa-pss";alg="rsa-pss-sha256"`,
+		},
+		{
+			name:  "Multiple signatures",
+			input: `sig1=("@method" "@target-uri");created=1618884473;keyid="test-key-rsa-pss";alg="rsa-pss-sha256", sig2=("content-digest");created=1618884474;keyid="test-key-ed25519";alg="ed25519"`,
+		},
+		{
+			name:  "Signature with all optional parameters",
+			input: `sig1=("@method");created=1618884473;expires=1618888073;nonce="b3c2a1";keyid="test-key";alg="rsa-pss-sha256";tag="example"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse the input
+			value, err := input.Parse([]byte(tt.input))
+			require.NoError(t, err, "Parse should succeed")
+			
+			// Marshal it back
+			marshaled, err := value.MarshalSFV()
+			require.NoError(t, err, "MarshalSFV should succeed")
+			
+			// Parse the marshaled result
+			reparsed, err := input.Parse(marshaled)
+			require.NoError(t, err, "Reparsing marshaled result should succeed")
+			
+			// Verify they're equivalent
+			require.Equal(t, value.Len(), reparsed.Len(), "Number of definitions should match")
+			
+			for i, originalDef := range value.Definitions() {
+				reparsedDef := reparsed.Definitions()[i]
+				
+				require.Equal(t, originalDef.Label(), reparsedDef.Label(), "Label should match")
+				require.Equal(t, originalDef.Components(), reparsedDef.Components(), "Components should match")
+				require.Equal(t, originalDef.KeyID(), reparsedDef.KeyID(), "KeyID should match")
+				require.Equal(t, originalDef.Algorithm(), reparsedDef.Algorithm(), "Algorithm should match")
+				
+				// Check optional parameters
+				originalCreated, originalHasCreated := originalDef.Created()
+				reparsedCreated, reparsedHasCreated := reparsedDef.Created()
+				require.Equal(t, originalHasCreated, reparsedHasCreated, "Created presence should match")
+				if originalHasCreated {
+					require.Equal(t, originalCreated, reparsedCreated, "Created timestamp should match")
+				}
+				
+				originalExpires, originalHasExpires := originalDef.Expires()
+				reparsedExpires, reparsedHasExpires := reparsedDef.Expires()
+				require.Equal(t, originalHasExpires, reparsedHasExpires, "Expires presence should match")
+				if originalHasExpires {
+					require.Equal(t, originalExpires, reparsedExpires, "Expires timestamp should match")
+				}
+				
+				originalNonce, originalHasNonce := originalDef.Nonce()
+				reparsedNonce, reparsedHasNonce := reparsedDef.Nonce()
+				require.Equal(t, originalHasNonce, reparsedHasNonce, "Nonce presence should match")
+				if originalHasNonce {
+					require.Equal(t, originalNonce, reparsedNonce, "Nonce should match")
+				}
+				
+				originalTag, originalHasTag := originalDef.Tag()
+				reparsedTag, reparsedHasTag := reparsedDef.Tag()
+				require.Equal(t, originalHasTag, reparsedHasTag, "Tag presence should match")
+				if originalHasTag {
+					require.Equal(t, originalTag, reparsedTag, "Tag should match")
+				}
+			}
+		})
+	}
+}
+
+func TestDefinitionMarshalSFV(t *testing.T) {
+	def := input.NewDefinitionBuilder().
+		Label("sig1").
+		Components("@method", "@target-uri", "content-digest").
+		KeyID("test-key-rsa-pss").
+		Algorithm("rsa-pss-sha256").
+		Created(1618884473).
+		Expires(1618888073).
+		Nonce("b3c2a1").
+		Tag("example").
+		Parameter("custom", "value").
+		MustBuild()
+	
+	// Marshal the definition
+	marshaled, err := def.MarshalSFV()
+	require.NoError(t, err, "MarshalSFV should succeed")
+	
+	// Should be an InnerList with components and parameters
+	t.Logf("Marshaled definition: %s", string(marshaled))
+	
+	// Parse it to verify it's valid SFV
+	result, err := input.Parse([]byte(`test=` + string(marshaled)))
+	require.NoError(t, err, "Should be able to parse marshaled definition")
+	require.Equal(t, 1, result.Len(), "Should have one definition")
+}
