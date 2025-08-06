@@ -1,12 +1,9 @@
 package sfv
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -22,24 +19,6 @@ func Marshal(v any) ([]byte, error) {
 
 	if marshaler, ok := v.(Marshaler); ok {
 		return marshaler.MarshalSFV()
-	}
-
-	// Check if it's already an SFV type
-	switch sfvType := v.(type) {
-	case Item:
-		return marshalItem(sfvType, true)
-	case List:
-		return marshalList(&sfvType)
-	case *List:
-		return marshalList(sfvType)
-	case Dictionary:
-		return marshalDictionary(&sfvType)
-	case *Dictionary:
-		return marshalDictionary(sfvType)
-	case InnerList:
-		return marshalInnerList(&sfvType)
-	case *InnerList:
-		return marshalInnerList(sfvType)
 	}
 
 	// Convert to SFV type and marshal
@@ -159,14 +138,6 @@ func isValidToken(s string) bool {
 	return false
 }
 
-// isTokenChar checks if a character is valid in a token
-func isTokenChar(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-		c == '!' || c == '#' || c == '$' || c == '%' || c == '&' || c == '\'' ||
-		c == '*' || c == '+' || c == '-' || c == '.' || c == '^' || c == '_' ||
-		c == '`' || c == '|' || c == '~' || c == ':' || c == '/'
-}
-
 // sliceToList converts a slice to an SFV List
 func sliceToList(rv reflect.Value) (*List, error) {
 	values := make([]any, rv.Len())
@@ -176,7 +147,7 @@ func sliceToList(rv reflect.Value) (*List, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling slice element %d: %w", i, err)
 		}
-		
+
 		// Convert BareItem to Item if needed
 		switch v := sfvValue.(type) {
 		case Item:
@@ -199,7 +170,7 @@ func arrayToList(rv reflect.Value) (*List, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling array element %d: %w", i, err)
 		}
-		
+
 		// Convert BareItem to Item if needed
 		switch v := sfvValue.(type) {
 		case Item:
@@ -361,290 +332,4 @@ func isValidKey(s string) bool {
 	}
 
 	return true
-}
-
-// marshalItem serializes an Item to bytes
-func marshalItem(item Item, isBare bool) ([]byte, error) {
-	var buf bytes.Buffer
-
-	// Marshal the bare item based on its type
-	switch item.Type() {
-	case BooleanType:
-		var b bool
-		if err := item.Value(&b); err != nil {
-			return nil, err
-		}
-		if b {
-			buf.WriteString("?1")
-		} else {
-			buf.WriteString("?0")
-		}
-
-	case IntegerType:
-		var i int64
-		if err := item.Value(&i); err != nil {
-			return nil, err
-		}
-		buf.WriteString(strconv.FormatInt(i, 10))
-
-	case DecimalType:
-		var f float64
-		if err := item.Value(&f); err != nil {
-			return nil, err
-		}
-		// Format with up to 3 decimal places, removing trailing zeros but keeping at least one decimal place
-		str := strconv.FormatFloat(f, 'f', 3, 64)
-		str = strings.TrimRight(str, "0")
-		if strings.HasSuffix(str, ".") {
-			str += "0" // Ensure at least one decimal place
-		}
-		buf.WriteString(str)
-
-	case StringType:
-		var s string
-		if err := item.Value(&s); err != nil {
-			return nil, err
-		}
-		buf.WriteString(strconv.Quote(s))
-	case TokenType:
-		var s string
-		if err := item.Value(&s); err != nil {
-			return nil, err
-		}
-		buf.WriteString(s)
-	case ByteSequenceType:
-		var b []byte
-		if err := item.Value(&b); err != nil {
-			return nil, err
-		}
-		buf.WriteByte(':')
-		buf.WriteString(base64.StdEncoding.EncodeToString(b))
-		buf.WriteByte(':')
-	case DateType:
-		var d int64
-		if err := item.Value(&d); err != nil {
-			return nil, err
-		}
-		buf.WriteByte('@')
-		buf.WriteString(strconv.FormatInt(d, 10))
-
-	case DisplayStringType:
-		var s string
-		if err := item.Value(&s); err != nil {
-			return nil, err
-		}
-		buf.WriteByte('%')
-		buf.WriteByte('"')
-		// Percent-encode non-ASCII characters
-		for _, r := range s {
-			if r <= 127 && r >= 32 && r != '%' {
-				// ASCII printable characters except %
-				buf.WriteRune(r)
-			} else {
-				// Percent-encode everything else
-				utf8Bytes := []byte(string(r))
-				for _, b := range utf8Bytes {
-					buf.WriteString(fmt.Sprintf("%%%.2x", b))
-				}
-			}
-		}
-		buf.WriteByte('"')
-
-	default:
-		return nil, fmt.Errorf("unsupported item type: %d", item.Type())
-	}
-
-	// Marshal parameters if any. Bare items cannot have parameters,
-	// so only do this if !isBare
-	if !isBare {
-		params := item.Parameters()
-		if params != nil && params.Len() > 0 {
-			paramStr, err := marshalParameters(params)
-			if err != nil {
-				return nil, err
-			}
-			buf.WriteString(paramStr)
-		}
-	}
-
-	return buf.Bytes(), nil
-}
-
-// marshalList serializes a List to bytes
-func marshalList(list *List) ([]byte, error) {
-	if list.Len() == 0 {
-		return []byte{}, nil
-	}
-
-	var parts []string
-	for i := 0; i < list.Len(); i++ {
-		value, ok := list.Get(i)
-		if !ok {
-			return nil, fmt.Errorf("failed to get list item %d", i)
-		}
-
-		var itemBytes []byte
-		var err error
-
-		switch v := value.(type) {
-		case Item:
-			itemBytes, err = marshalItem(v, false)
-		case *InnerList:
-			itemBytes, err = marshalInnerList(v)
-		default:
-			return nil, fmt.Errorf("unsupported list member type: %T", v)
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling list item %d: %w", i, err)
-		}
-
-		parts = append(parts, string(itemBytes))
-	}
-
-	return []byte(strings.Join(parts, ", ")), nil
-}
-
-// marshalInnerList serializes an InnerList to bytes
-func marshalInnerList(innerList *InnerList) ([]byte, error) {
-	var sb strings.Builder
-	sb.WriteByte('(')
-
-	for i := 0; i < innerList.Len(); i++ {
-		if i > 0 {
-			sb.WriteByte(' ')
-		}
-
-		item, ok := innerList.Get(i)
-		if !ok {
-			return nil, fmt.Errorf("failed to get inner list item %d", i)
-		}
-
-		itemBytes, err := marshalItem(item, false)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling inner list item %d: %w", i, err)
-		}
-
-		sb.Write(itemBytes)
-	}
-
-	sb.WriteByte(')')
-
-	// Marshal parameters if any
-	if innerList.params != nil && innerList.params.Len() > 0 {
-		paramStr, err := marshalParameters(innerList.params)
-		if err != nil {
-			return nil, err
-		}
-		sb.WriteString(paramStr)
-	}
-
-	return []byte(sb.String()), nil
-}
-
-// marshalDictionary serializes a Dictionary to bytes
-func marshalDictionary(dict *Dictionary) ([]byte, error) {
-	if dict == nil {
-		return []byte{}, nil
-	}
-
-	keys := dict.Keys()
-	if len(keys) == 0 {
-		return []byte{}, nil
-	}
-
-	var parts []string
-	for _, key := range keys {
-		value, ok := dict.Get(key)
-		if !ok {
-			continue
-		}
-
-		var sb strings.Builder
-		sb.WriteString(key)
-
-		// Only add '=' if the value is not a Boolean true
-		needsEquals := true
-		if item, ok := value.(Item); ok && item.Type() == BooleanType {
-			var b bool
-			if err := item.Value(&b); err == nil && b {
-				// Boolean true values can be represented as bare keys in dictionaries
-				needsEquals = false
-			}
-		}
-
-		if needsEquals {
-			sb.WriteByte('=')
-			var valueBytes []byte
-			var err error
-
-			switch v := value.(type) {
-			case Item:
-				valueBytes, err = marshalItem(v, false)
-			case BareItem:
-				// Convert BareItem to Item for marshaling
-				item := v.With(nil)
-				valueBytes, err = marshalItem(item, false)
-			case *InnerList:
-				valueBytes, err = marshalInnerList(v)
-			default:
-				return nil, fmt.Errorf("unsupported dictionary value type: %T", v)
-			}
-
-			if err != nil {
-				return nil, fmt.Errorf("error marshaling dictionary value for key %q: %w", key, err)
-			}
-
-			sb.Write(valueBytes)
-		}
-
-		parts = append(parts, sb.String())
-	}
-
-	return []byte(strings.Join(parts, ", ")), nil
-}
-
-// marshalParameters serializes Parameters to bytes
-func marshalParameters(params *Parameters) (string, error) {
-	if params == nil || params.Len() == 0 {
-		return "", nil
-	}
-
-	var sb strings.Builder
-	// Ensure keys slice is populated from Values map if needed
-	if len(params.keys) == 0 && len(params.Values) > 0 {
-		for key := range params.Values {
-			params.keys = append(params.keys, key)
-		}
-	}
-	for _, key := range params.keys {
-		sb.WriteByte(';')
-		sb.WriteString(key)
-
-		value, exists := params.Values[key]
-		if !exists {
-			continue
-		}
-
-		// Only add '=' if the value is not Boolean true
-		if value.Type() == BooleanType {
-			var boolVal bool
-			if err := value.Value(&boolVal); err != nil {
-				return "", fmt.Errorf("error getting boolean value for parameter %q: %w", key, err)
-			}
-			if boolVal {
-				// Boolean true parameters can be represented as bare keys
-				continue
-			}
-		}
-
-		sb.WriteByte('=')
-		marshaledParam, err := value.MarshalSFV()
-		if err != nil {
-			return "", fmt.Errorf("error marshaling parameter value %q: %w", key, err)
-		}
-		sb.Write(marshaledParam)
-	}
-
-	return sb.String(), nil
 }
