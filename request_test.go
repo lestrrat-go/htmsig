@@ -574,3 +574,245 @@ func TestSignRequest_Errors(t *testing.T) {
 		require.Contains(t, err.Error(), "failed to sign")
 	})
 }
+
+func TestAlgorithmDetection_RSA(t *testing.T) {
+	t.Parallel()
+	
+	// Generate RSA key pair
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	pubKey := &privKey.PublicKey
+	
+	req := createTestRequest(t)
+	
+	// Create signature definition WITHOUT algorithm parameter
+	def, err := input.NewDefinitionBuilder().
+		Label("sig1").
+		Components("@method", "@target-uri", "@authority", "content-type").
+		KeyID("test-key-rsa").
+		// No Algorithm() call - should be detected from key type
+		Build()
+	require.NoError(t, err)
+	
+	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+	
+	// Sign the request - should detect rsa-pss-sha256 from key type
+	err = htmsig.SignRequest(req, inputValue, privKey)
+	require.NoError(t, err)
+	
+	// Verify headers are set
+	require.NotEmpty(t, req.Header.Get("Signature-Input"))
+	require.NotEmpty(t, req.Header.Get("Signature"))
+	
+	// Create key resolver
+	keyResolver := &testKeyResolver{
+		keys: map[string]any{
+			"test-key-rsa": pubKey,
+		},
+	}
+	
+	// Verify the request - should also detect algorithm from key type
+	err = htmsig.VerifyRequest(req, keyResolver)
+	require.NoError(t, err)
+}
+
+func TestAlgorithmDetection_ECDSA(t *testing.T) {
+	t.Parallel()
+	
+	tests := []struct {
+		name          string
+		curve         elliptic.Curve
+		expectedAlg   string
+	}{
+		{"P-256", elliptic.P256(), "ecdsa-p256-sha256"},
+		{"P-384", elliptic.P384(), "ecdsa-p384-sha384"},
+		{"P-521", elliptic.P521(), "ecdsa-p521-sha512"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Generate ECDSA key pair
+			privKey, err := ecdsa.GenerateKey(tt.curve, rand.Reader)
+			require.NoError(t, err)
+			pubKey := &privKey.PublicKey
+			
+			req := createTestRequest(t)
+			
+			// Create signature definition WITHOUT algorithm parameter
+			def, err := input.NewDefinitionBuilder().
+				Label("sig1").
+				Components("@method", "@target-uri", "@authority").
+				KeyID("test-key-ecdsa").
+				// No Algorithm() call - should be detected from key type
+				Build()
+			require.NoError(t, err)
+			
+			inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+			
+			// Sign the request - should detect algorithm from key type
+			err = htmsig.SignRequest(req, inputValue, privKey)
+			require.NoError(t, err)
+			
+			// Create key resolver
+			keyResolver := &testKeyResolver{
+				keys: map[string]any{
+					"test-key-ecdsa": pubKey,
+				},
+			}
+			
+			// Verify the request - should also detect algorithm from key type
+			err = htmsig.VerifyRequest(req, keyResolver)
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestAlgorithmDetection_EdDSA(t *testing.T) {
+	t.Parallel()
+	
+	// Generate Ed25519 key pair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	
+	req := createTestRequest(t)
+	
+	// Create signature definition WITHOUT algorithm parameter
+	def, err := input.NewDefinitionBuilder().
+		Label("sig1").
+		Components("@method", "@target-uri", "@authority").
+		KeyID("test-key-ed25519").
+		// No Algorithm() call - should be detected from key type
+		Build()
+	require.NoError(t, err)
+	
+	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+	
+	// Sign the request - should detect ed25519 from key type
+	err = htmsig.SignRequest(req, inputValue, privKey)
+	require.NoError(t, err)
+	
+	// Create key resolver
+	keyResolver := &testKeyResolver{
+		keys: map[string]any{
+			"test-key-ed25519": pubKey,
+		},
+	}
+	
+	// Verify the request - should also detect algorithm from key type
+	err = htmsig.VerifyRequest(req, keyResolver)
+	require.NoError(t, err)
+}
+
+func TestAlgorithmDetection_HMAC(t *testing.T) {
+	t.Parallel()
+	
+	// Generate HMAC key
+	hmacKey := make([]byte, 32)
+	_, err := rand.Read(hmacKey)
+	require.NoError(t, err)
+	
+	req := createTestRequest(t)
+	
+	// Create signature definition WITHOUT algorithm parameter
+	def, err := input.NewDefinitionBuilder().
+		Label("sig1").
+		Components("@method", "@target-uri", "@authority").
+		KeyID("test-key-hmac").
+		// No Algorithm() call - should be detected from key type
+		Build()
+	require.NoError(t, err)
+	
+	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+	
+	// Sign the request - should detect hmac-sha256 from key type
+	err = htmsig.SignRequest(req, inputValue, hmacKey)
+	require.NoError(t, err)
+	
+	// Create key resolver
+	keyResolver := &testKeyResolver{
+		keys: map[string]any{
+			"test-key-hmac": hmacKey,
+		},
+	}
+	
+	// Verify the request - should also detect algorithm from key type
+	err = htmsig.VerifyRequest(req, keyResolver)
+	require.NoError(t, err)
+}
+
+func TestAlgorithmDetection_Errors(t *testing.T) {
+	t.Parallel()
+	
+	req := createTestRequest(t)
+	
+	// Create signature definition without algorithm
+	def, err := input.NewDefinitionBuilder().
+		Label("sig1").
+		Components("@method").
+		KeyID("test-key").
+		Build()
+	require.NoError(t, err)
+	
+	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+	
+	t.Run("unsupported_key_type", func(t *testing.T) {
+		// Try to sign with unsupported key type
+		err = htmsig.SignRequest(req, inputValue, "not-a-crypto-key")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unable to detect algorithm from key type")
+	})
+	
+	t.Run("unsupported_ecdsa_curve", func(t *testing.T) {
+		// Generate ECDSA key with unsupported curve
+		unsupportedCurve := &elliptic.CurveParams{
+			BitSize: 224, // P-224 is not supported by HTTP Message Signatures
+		}
+		// Create a mock private key with unsupported curve
+		privKey := &ecdsa.PrivateKey{
+			PublicKey: ecdsa.PublicKey{
+				Curve: unsupportedCurve,
+			},
+		}
+		
+		err = htmsig.SignRequest(req, inputValue, privKey)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unsupported ECDSA curve bit size")
+	})
+}
+
+func TestAlgorithmDetection_ExplicitAlgorithmOverridesDetection(t *testing.T) {
+	t.Parallel()
+	
+	// Generate RSA key pair
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	pubKey := &privKey.PublicKey
+	
+	req := createTestRequest(t)
+	
+	// Create signature definition WITH explicit algorithm (should override detection)
+	def, err := input.NewDefinitionBuilder().
+		Label("sig1").
+		Components("@method", "@target-uri", "@authority").
+		KeyID("test-key-rsa").
+		Algorithm("rsa-v1_5-sha256"). // Explicitly use PKCS#1 v1.5 instead of PSS
+		Build()
+	require.NoError(t, err)
+	
+	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+	
+	// Sign the request - should use explicit algorithm, not detected one
+	err = htmsig.SignRequest(req, inputValue, privKey)
+	require.NoError(t, err)
+	
+	// Create key resolver
+	keyResolver := &testKeyResolver{
+		keys: map[string]any{
+			"test-key-rsa": pubKey,
+		},
+	}
+	
+	// Verify the request - should use explicit algorithm from signature
+	err = htmsig.VerifyRequest(req, keyResolver)
+	require.NoError(t, err)
+}

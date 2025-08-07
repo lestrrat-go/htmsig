@@ -1,6 +1,9 @@
 package htmsig
 
 import (
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"fmt"
 	"net/http"
 
@@ -79,6 +82,46 @@ func (ctx *sigreqContext) buildSignatureBase(def *input.Definition) ([]byte, err
 	return base, nil
 }
 
+// detectAlgorithmFromKey determines the default algorithm based on key type
+func detectAlgorithmFromKey(key any) (string, error) {
+	switch k := key.(type) {
+	case *rsa.PrivateKey, *rsa.PublicKey:
+		// Default to RSA-PSS with SHA-256 for RSA keys
+		return "rsa-pss-sha256", nil
+	case *ecdsa.PrivateKey:
+		// Determine algorithm based on curve
+		switch k.Curve.Params().BitSize {
+		case 256:
+			return "ecdsa-p256-sha256", nil
+		case 384:
+			return "ecdsa-p384-sha384", nil
+		case 521:
+			return "ecdsa-p521-sha512", nil
+		default:
+			return "", fmt.Errorf("unsupported ECDSA curve bit size: %d", k.Curve.Params().BitSize)
+		}
+	case *ecdsa.PublicKey:
+		// Determine algorithm based on curve
+		switch k.Curve.Params().BitSize {
+		case 256:
+			return "ecdsa-p256-sha256", nil
+		case 384:
+			return "ecdsa-p384-sha384", nil
+		case 521:
+			return "ecdsa-p521-sha512", nil
+		default:
+			return "", fmt.Errorf("unsupported ECDSA curve bit size: %d", k.Curve.Params().BitSize)
+		}
+	case ed25519.PrivateKey, ed25519.PublicKey:
+		return "ed25519", nil
+	case []byte:
+		// Assume HMAC with SHA-256 for byte slices
+		return "hmac-sha256", nil
+	default:
+		return "", fmt.Errorf("unable to detect algorithm from key type %T", key)
+	}
+}
+
 // SignRequest signs the given HTTP request using the provided Signature-Input definition and key.
 func SignRequest(req *http.Request, def *input.Value, key any) error {
 	definitions := def.Definitions()
@@ -104,7 +147,12 @@ func SignRequest(req *http.Request, def *input.Value, key any) error {
 		// Map HTTP Message Signatures algorithm names to JWS algorithm names
 		algorithm := definition.Algorithm()
 		if algorithm == "" {
-			return fmt.Errorf("signature %q missing algorithm parameter (algorithm determination from key material not yet implemented)", definition.Label())
+			// Try to detect algorithm from key type
+			detectedAlg, err := detectAlgorithmFromKey(key)
+			if err != nil {
+				return fmt.Errorf("signature %q missing algorithm parameter and unable to detect from key: %w", definition.Label(), err)
+			}
+			algorithm = detectedAlg
 		}
 		var jwsAlgorithm string
 		switch algorithm {
@@ -238,7 +286,12 @@ func VerifyRequest(req *http.Request, keyResolver KeyResolver) error {
 		// Step 6: Determine algorithm
 		algorithm := definition.Algorithm()
 		if algorithm == "" {
-			return fmt.Errorf("signature %q missing algorithm parameter (algorithm determination from key material not yet implemented)", label)
+			// Try to detect algorithm from key type
+			detectedAlg, err := detectAlgorithmFromKey(verificationKey)
+			if err != nil {
+				return fmt.Errorf("signature %q missing algorithm parameter and unable to detect from key: %w", label, err)
+			}
+			algorithm = detectedAlg
 		}
 		
 		// Map HTTP Message Signatures algorithm to JWS algorithm
