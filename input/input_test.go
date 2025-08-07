@@ -40,7 +40,6 @@ func TestParseSignatureInput(t *testing.T) {
 						Label("sig1").
 						Components(input.MethodComponent, input.TargetURIComponent).
 						KeyID("test-key-rsa-pss").
-						Algorithm("rsa-pss-sha256").
 						Created(1618884473).
 						MustBuild(),
 				).
@@ -49,7 +48,6 @@ func TestParseSignatureInput(t *testing.T) {
 						Label("sig2").
 						Components("content-digest").
 						KeyID("test-key-ed25519").
-						Algorithm("ed25519").
 						Created(1618884474).
 						MustBuild(),
 				).
@@ -64,7 +62,6 @@ func TestParseSignatureInput(t *testing.T) {
 						Label("sig1").
 						Components(input.MethodComponent).
 						KeyID("test-key").
-						Algorithm("rsa-pss-sha256").
 						Created(1618884473).
 						Expires(1618888073).
 						Nonce("b3c2a1").

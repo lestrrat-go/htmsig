@@ -197,9 +197,11 @@ func Parse(data []byte) (*Value, error) {
 			}
 		}
 		
-		// For parsing, we use BuildWithoutValidation to be lenient
-		// The validation will happen later when someone tries to use the definition
-		def := defBuilder.BuildWithoutValidation()
+		// Build the definition with proper validation
+		def, err := defBuilder.Build()
+		if err != nil {
+			return nil, fmt.Errorf("invalid signature definition %q: %w", key, err)
+		}
 		
 		builder.AddDefinition(def)
 	}

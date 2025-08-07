@@ -10,6 +10,11 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jws/jwsbb"
 )
 
+// KeyResolver is the interface for resolving verification keys by key ID
+type KeyResolver interface {
+	ResolveKey(keyID string) (any, error)
+}
+
 type sigreqContext struct {
 	req *http.Request
 }
@@ -98,6 +103,9 @@ func SignRequest(req *http.Request, def *input.Value, key any) error {
 		// Generate signature based on algorithm
 		// Map HTTP Message Signatures algorithm names to JWS algorithm names
 		algorithm := definition.Algorithm()
+		if algorithm == "" {
+			return fmt.Errorf("signature %q missing algorithm parameter (algorithm determination from key material not yet implemented)", definition.Label())
+		}
 		var jwsAlgorithm string
 		switch algorithm {
 		case "rsa-pss-sha256":
@@ -167,5 +175,117 @@ func SignRequest(req *http.Request, def *input.Value, key any) error {
 	}
 	req.Header.Set(SignatureHeader, string(signatureBytes))
 
+	return nil
+}
+
+// VerifyRequest verifies the HTTP Message Signatures in the given HTTP request.
+func VerifyRequest(req *http.Request, keyResolver KeyResolver) error {
+	// Step 1: Parse Signature-Input and Signature headers
+	signatureInputHeader := req.Header.Get(SignatureInputHeader)
+	if signatureInputHeader == "" {
+		return fmt.Errorf("missing %s header", SignatureInputHeader)
+	}
+	
+	signatureHeader := req.Header.Get(SignatureHeader)
+	if signatureHeader == "" {
+		return fmt.Errorf("missing %s header", SignatureHeader)
+	}
+	
+	// Parse the Signature-Input field
+	inputValue, err := input.Parse([]byte(signatureInputHeader))
+	if err != nil {
+		return fmt.Errorf("failed to parse %s header: %w", SignatureInputHeader, err)
+	}
+	
+	// Parse the Signature field
+	signatureDict, err := sfv.Parse([]byte(signatureHeader))
+	if err != nil {
+		return fmt.Errorf("failed to parse %s header: %w", SignatureHeader, err)
+	}
+	
+	sigDict, ok := signatureDict.(*sfv.Dictionary)
+	if !ok {
+		return fmt.Errorf("%s header must be a Dictionary, got %T", SignatureHeader, signatureDict)
+	}
+	
+	// Verify each signature
+	for _, definition := range inputValue.Definitions() {
+		label := definition.Label()
+		
+		// Step 1.2: Check corresponding signature exists
+		sigValue, exists := sigDict.Get(label)
+		if !exists {
+			return fmt.Errorf("no signature found for label %q", label)
+		}
+		
+		// Extract signature bytes
+		var signatureBytes []byte
+		if err := sigValue.(sfv.BareItem).Value(&signatureBytes); err != nil {
+			return fmt.Errorf("failed to extract signature bytes for label %q: %w", label, err)
+		}
+		
+		// Step 5: Resolve verification key
+		keyID := definition.KeyID()
+		if keyID == "" {
+			return fmt.Errorf("signature %q missing keyid parameter", label)
+		}
+		
+		verificationKey, err := keyResolver.ResolveKey(keyID)
+		if err != nil {
+			return fmt.Errorf("failed to resolve key %q: %w", keyID, err)
+		}
+		
+		// Step 6: Determine algorithm
+		algorithm := definition.Algorithm()
+		if algorithm == "" {
+			return fmt.Errorf("signature %q missing algorithm parameter (algorithm determination from key material not yet implemented)", label)
+		}
+		
+		// Map HTTP Message Signatures algorithm to JWS algorithm
+		var jwsAlgorithm string
+		switch algorithm {
+		case "rsa-pss-sha256":
+			jwsAlgorithm = "PS256"
+		case "rsa-pss-sha384":
+			jwsAlgorithm = "PS384"
+		case "rsa-pss-sha512":
+			jwsAlgorithm = "PS512"
+		case "rsa-v1_5-sha256":
+			jwsAlgorithm = "RS256"
+		case "rsa-v1_5-sha384":
+			jwsAlgorithm = "RS384"
+		case "rsa-v1_5-sha512":
+			jwsAlgorithm = "RS512"
+		case "hmac-sha256":
+			jwsAlgorithm = "HS256"
+		case "hmac-sha384":
+			jwsAlgorithm = "HS384"
+		case "hmac-sha512":
+			jwsAlgorithm = "HS512"
+		case "ecdsa-p256-sha256":
+			jwsAlgorithm = "ES256"
+		case "ecdsa-p384-sha384":
+			jwsAlgorithm = "ES384"
+		case "ecdsa-p521-sha512":
+			jwsAlgorithm = "ES512"
+		case "ed25519":
+			jwsAlgorithm = "EdDSA"
+		default:
+			return fmt.Errorf("unsupported HTTP Message Signatures algorithm: %s", algorithm)
+		}
+		
+		// Step 7: Recreate signature base
+		srctx := newSigreqContext(req)
+		signatureBase, err := srctx.buildSignatureBase(definition)
+		if err != nil {
+			return fmt.Errorf("failed to rebuild signature base for %q: %w", label, err)
+		}
+		
+		// Step 8: Verify signature using jwsbb
+		if err := jwsbb.Verify(verificationKey, jwsAlgorithm, signatureBase, signatureBytes); err != nil {
+			return fmt.Errorf("signature verification failed for %q (algorithm %s, JWS %s): %w", label, algorithm, jwsAlgorithm, err)
+		}
+	}
+	
 	return nil
 }

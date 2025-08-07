@@ -180,9 +180,8 @@ func (b *DefinitionBuilder) Build() (*Definition, error) {
 	if b.def.keyid == "" {
 		return nil, fmt.Errorf("keyid is required")
 	}
-	if b.def.algorithm == "" {
-		return nil, fmt.Errorf("algorithm is required")
-	}
+	// Note: algorithm is optional per RFC 9421 Section 3.2 step 6.2-6.4
+	// It can be determined from key material, configuration, or the alg parameter
 
 	return b.def, nil
 }
@@ -196,10 +195,6 @@ func (b *DefinitionBuilder) MustBuild() *Definition {
 	return def
 }
 
-// BuildWithoutValidation creates the Definition without validation (for parsing)
-func (b *DefinitionBuilder) BuildWithoutValidation() *Definition {
-	return b.def
-}
 
 // Label returns the signature label
 func (d *Definition) Label() string {
