@@ -7,6 +7,30 @@ import (
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
+var (
+	derivedMethod     = New("@method")
+	derivedQueryParam = New("@query-param")
+	derivedAuthority  = New("@authority")
+	derivedTargetURI  = New("@target-uri")
+	derivedStatus     = New("@status")
+)
+
+func Method() Identifier {
+	return derivedMethod
+}
+
+func TargetURI() Identifier {
+	return derivedTargetURI
+}
+
+func Authority() Identifier {
+	return derivedAuthority
+}
+
+func Status() Identifier {
+	return derivedStatus
+}
+
 // Identifier represents an HTTP Message Signature component identifier
 // with its name and parameters according to RFC 9421
 type Identifier struct {

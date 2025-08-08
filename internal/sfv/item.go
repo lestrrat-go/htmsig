@@ -8,6 +8,8 @@ import (
 
 func BareItemFrom(value any) (BareItem, error) {
 	switch v := value.(type) {
+	case BareItem:
+		return v, nil
 	case string:
 		return String().Value(v).Build()
 	case bool:

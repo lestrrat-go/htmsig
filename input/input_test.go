@@ -141,12 +141,16 @@ func TestParseSignatureInput(t *testing.T) {
 				actualParams := actualDef.Parameters()
 
 				// Compare parameter counts (ignoring standard parameters like created, expires, etc.)
-				require.Equal(t, len(expectedParams.Values), len(actualParams.Values), "Number of arbitrary parameters should match")
+				require.Equal(t, len(expectedParams), len(actualParams), "Number of arbitrary parameters should match")
 
 				// Check each arbitrary parameter
-				for key, expectedValue := range expectedParams.Values {
-					actualValue, exists := actualParams.Values[key]
-					require.True(t, exists, "Parameter %s should exist", key)
+				for _, key := range expectedParams {
+					var expectedValue any
+					require.NoError(t, expectedDef.GetParameter(key, &expectedValue), "Should get parameter %s", key)
+
+					var actualValue any
+					require.NoError(t, actualDef.GetParameter(key, &actualValue), "Should get parameter %s", key)
+
 					require.Equal(t, expectedValue, actualValue, "Parameter %s value should match", key)
 				}
 			}

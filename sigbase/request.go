@@ -2,32 +2,17 @@ package sigbase
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/lestrrat-go/htmsig/internal/common"
+	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
 // RequestBuilder is a builder for constructing a signature base for an
 // HTTP request.
 // byteSlice, err := sigbase.Request(req).Components(...strings).Build()
-type RequestBuilder struct {
-	req        *http.Request
-	components []common.Component
-
-	// Signature parameters
-	created   *int64
-	expires   *int64
-	keyid     string
-	algorithm string
-	nonce     *string
-	tag       *string
-	params    map[string]string
-
-	err error
-}
 
 func Request(req *http.Request) *RequestBuilder {
 	if req == nil {
@@ -39,7 +24,7 @@ func Request(req *http.Request) *RequestBuilder {
 }
 
 // Components sets the list of components to include in the signature base
-func (rb *RequestBuilder) Components(components ...common.Component) *RequestBuilder {
+func (rb *RequestBuilder) Components(components ...component.Identifier) *RequestBuilder {
 	if rb.err != nil {
 		return rb
 	}
@@ -140,6 +125,9 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 	seenComponents := make(map[string]struct{})
 
 	// Process each covered component
+	ctx := context.Background()
+	ctx = component.WithMode(ctx, component.ModeRequest)
+	ctx = component.WithRequest(ctx, rb.req)
 	for _, comp := range rb.components {
 		// Check for duplicates
 		if _, ok := seenComponents[comp.Name()]; ok {
@@ -148,7 +136,7 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 		seenComponents[comp.Name()] = struct{}{}
 
 		// Get component value
-		value, err := rb.getComponentValue(comp)
+		value, err := component.Resolve(ctx, comp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get component value for %q: %w", comp.Name(), err)
 		}
@@ -173,67 +161,6 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 		result = result[:len(result)-1]
 	}
 	return result, nil
-}
-
-// getComponentValue retrieves the component value based on the component
-func (rb *RequestBuilder) getComponentValue(component common.Component) (string, error) {
-	// Handle derived components (start with @)
-	if strings.HasPrefix(component.Name(), "@") {
-		return ResolveRequestComponent(component, rb.req)
-	}
-
-	// Handle HTTP header fields
-	return rb.getHeaderFieldValue(component)
-}
-
-// getHeaderFieldValue handles HTTP header fields according to RFC 9421 Section 2.1
-func (rb *RequestBuilder) getHeaderFieldValue(component common.Component) (string, error) {
-	// Get header values (case-insensitive)
-	values := rb.req.Header.Values(component.Name())
-	if len(values) == 0 {
-		return "", fmt.Errorf("header field %q not found", component.Name)
-	}
-
-	// Handle bs parameter (byte sequence)
-	if component.HasParameter("bs") {
-		// For bs parameter, we wrap the field value
-		// The field must contain only a single value for bs to work
-		if len(values) > 1 {
-			return "", fmt.Errorf("bs parameter requires single header value for field %q", component.Name)
-		}
-		// Return the value as-is (it should already be properly encoded)
-		return values[0], nil
-	}
-
-	// Handle sf parameter (structured field)
-	if component.HasParameter("sf") {
-		// For sf parameter, structured field serialization must be handled by caller
-		return "", fmt.Errorf("cannot retrieve structured field value for header %q with sf parameter", component.Name)
-	}
-
-	// Handle key parameter for Dictionary fields
-	var keyName string
-	if err := component.GetParameter("key", &keyName); err != nil {
-		return "", fmt.Errorf("missing 'key' parameter for dictionary field %q: %w", component.Name(), err)
-	}
-
-	// Default behavior: concatenate multiple instances with ", " per RFC 9421 Section 2.1.1
-	// This handles the case where the same field appears multiple times
-	var fieldValues []string
-	for _, value := range values {
-		// Trim leading/trailing whitespace from each value
-		trimmed := strings.TrimSpace(value)
-		if trimmed != "" {
-			fieldValues = append(fieldValues, trimmed)
-		}
-	}
-
-	if len(fieldValues) == 0 {
-		return "", fmt.Errorf("header field %q has only empty values", component.Name)
-	}
-
-	// Join with ", " as per RFC 9421
-	return strings.Join(fieldValues, ", "), nil
 }
 
 // hasSignatureParams checks if signature parameters are set

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lestrrat-go/blackmagic"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -32,7 +33,7 @@ type Definition struct {
 	tag     *string // Application-specific tag
 
 	// Additional parameters.
-	additionalParams *sfv.Parameters
+	params map[string]any
 }
 
 // DefinitionBuilder helps build Definition objects
@@ -44,7 +45,7 @@ type DefinitionBuilder struct {
 func NewDefinitionBuilder() *DefinitionBuilder {
 	return &DefinitionBuilder{
 		def: &Definition{
-			additionalParams: &sfv.Parameters{Values: make(map[string]sfv.BareItem)},
+			params: make(map[string]any),
 		},
 	}
 }
@@ -113,58 +114,7 @@ func (b *DefinitionBuilder) Tag(tag string) *DefinitionBuilder {
 
 // Parameter sets an additional parameter
 func (b *DefinitionBuilder) Parameter(key string, value any) *DefinitionBuilder {
-	if b.def.additionalParams == nil {
-		b.def.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.BareItem)}
-	}
-	
-	// Convert any value to sfv.BareItem
-	var bareItem sfv.BareItem
-	var err error
-	switch v := value.(type) {
-	case sfv.BareItem:
-		bareItem = v
-	case sfv.Item:
-		bareItem = v // Item implements BareItem interface
-	case bool:
-		if v {
-			bareItem = sfv.True()
-		} else {
-			bareItem = sfv.False()
-		}
-	case int:
-		bareItem, err = sfv.Integer().Value(int64(v)).Build()
-		if err != nil {
-			return b // silently fail for now
-		}
-	case int64:
-		bareItem, err = sfv.Integer().Value(v).Build()
-		if err != nil {
-			return b
-		}
-	case float64:
-		bareItem, err = sfv.Decimal().Value(v).Build()
-		if err != nil {
-			return b
-		}
-	case string:
-		bareItem, err = sfv.String().Value(v).Build()
-		if err != nil {
-			return b
-		}
-	case []byte:
-		bareItem, err = sfv.ByteSequence().Value(v).Build()
-		if err != nil {
-			return b
-		}
-	default:
-		// Default to string conversion
-		bareItem, err = sfv.String().Value(fmt.Sprintf("%v", v)).Build()
-		if err != nil {
-			return b
-		}
-	}
-	
-	b.def.additionalParams.Values[key] = bareItem
+	b.def.params[key] = value
 	return b
 }
 
@@ -194,7 +144,6 @@ func (b *DefinitionBuilder) MustBuild() *Definition {
 	}
 	return def
 }
-
 
 // Label returns the signature label
 func (d *Definition) Label() string {
@@ -297,132 +246,22 @@ func (d *Definition) SetTag(tag string) *Definition {
 }
 
 // Parameter returns an additional parameter
-func (d *Definition) Parameter(key string) any {
-	if d.additionalParams == nil || d.additionalParams.Values == nil {
-		return nil
+func (d *Definition) GetParameter(key string, dst any) error {
+	v, ok := d.params[key]
+	if !ok {
+		return fmt.Errorf("parameter %q not found", key)
 	}
-	item, exists := d.additionalParams.Values[key]
-	if !exists {
-		return nil
-	}
-	
-	// Convert sfv.Item back to Go value
-	switch item.Type() {
-	case sfv.BooleanType:
-		var b bool
-		if err := item.Value(&b); err == nil {
-			return b
-		}
-	case sfv.IntegerType:
-		var i int64
-		if err := item.Value(&i); err == nil {
-			return i
-		}
-	case sfv.DecimalType:
-		var f float64
-		if err := item.Value(&f); err == nil {
-			return f
-		}
-	case sfv.StringType:
-		var s string
-		if err := item.Value(&s); err == nil {
-			return s
-		}
-	case sfv.TokenType:
-		var s string
-		if err := item.Value(&s); err == nil {
-			return s
-		}
-	case sfv.ByteSequenceType:
-		var b []byte
-		if err := item.Value(&b); err == nil {
-			return b
-		}
-	case sfv.DateType:
-		var i int64
-		if err := item.Value(&i); err == nil {
-			return i
-		}
-	case sfv.DisplayStringType:
-		var s string
-		if err := item.Value(&s); err == nil {
-			return s
-		}
-	}
-	
-	// Return the item itself if conversion fails
-	return item
+
+	return blackmagic.AssignIfCompatible(dst, v)
 }
 
-// SetParameter sets an additional parameter
-func (d *Definition) SetParameter(key string, value any) *Definition {
-	if d.additionalParams == nil {
-		d.additionalParams = &sfv.Parameters{Values: make(map[string]sfv.BareItem)}
+func (d *Definition) Parameters() []string {
+	keys := make([]string, 0, len(d.params))
+	for key := range d.params {
+		keys = append(keys, key)
 	}
-	
-	// Convert any value to sfv.BareItem
-	var bareItem sfv.BareItem
-	var err error
-	switch v := value.(type) {
-	case sfv.BareItem:
-		bareItem = v
-	case sfv.Item:
-		bareItem = v // Item implements BareItem interface
-	case bool:
-		if v {
-			bareItem = sfv.True()
-		} else {
-			bareItem = sfv.False()
-		}
-	case int:
-		bareItem, err = sfv.Integer().Value(int64(v)).Build()
-		if err != nil {
-			return d // silently fail for now
-		}
-	case int64:
-		bareItem, err = sfv.Integer().Value(v).Build()
-		if err != nil {
-			return d
-		}
-	case float64:
-		bareItem, err = sfv.Decimal().Value(v).Build()
-		if err != nil {
-			return d
-		}
-	case string:
-		bareItem, err = sfv.String().Value(v).Build()
-		if err != nil {
-			return d
-		}
-	case []byte:
-		bareItem, err = sfv.ByteSequence().Value(v).Build()
-		if err != nil {
-			return d
-		}
-	default:
-		// Default to string conversion
-		bareItem, err = sfv.String().Value(fmt.Sprintf("%v", v)).Build()
-		if err != nil {
-			return d
-		}
-	}
-	
-	d.additionalParams.Values[key] = bareItem
-	return d
+	return keys
 }
-
-// Parameters returns the additional parameters as *sfv.Parameters
-func (d *Definition) Parameters() *sfv.Parameters {
-	return d.additionalParams
-}
-
-// SetParameters sets the additional parameters directly
-func (d *Definition) SetParameters(params *sfv.Parameters) *Definition {
-	d.additionalParams = params
-	return d
-}
-
-// Convenience methods for time.Time
 
 // CreatedTime returns the created timestamp as a time.Time
 func (d *Definition) CreatedTime() (time.Time, bool) {
@@ -456,39 +295,73 @@ func (d *Definition) SetExpiresTime(t time.Time) *Definition {
 // A Definition marshals to an InnerList with components and parameters
 func (d *Definition) MarshalSFV() ([]byte, error) {
 	// Create parameters
-	params := &sfv.Parameters{Values: make(map[string]sfv.BareItem)}
-	
+	params := sfv.NewParameters()
+
 	// Add standard parameters
 	if d.created != nil {
-		params.Values["created"] = sfv.Integer().Value(*d.created).MustBuild()
+		created, err := sfv.Integer().Value(*d.created).Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create created parameter: %w", err)
+		}
+		params.Set("created", created)
 	}
+
 	if d.expires != nil {
-		params.Values["expires"] = sfv.Integer().Value(*d.expires).MustBuild()
+		expires, err := sfv.Integer().Value(*d.expires).Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create expires parameter: %w", err)
+		}
+		params.Set("expires", expires)
 	}
+
 	if d.keyid != "" {
-		params.Values["keyid"] = sfv.String().Value(d.keyid).MustBuild()
+		kid, err := sfv.String().Value(d.keyid).Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create keyid parameter: %w", err)
+		}
+		params.Set("keyid", kid)
 	}
+
 	if d.algorithm != "" {
-		params.Values["alg"] = sfv.String().Value(d.algorithm).MustBuild()
+		alg, err := sfv.String().Value(d.algorithm).Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create algorithm parameter: %w", err)
+		}
+		params.Set("alg", alg)
 	}
+
 	if d.nonce != nil {
-		params.Values["nonce"] = sfv.String().Value(*d.nonce).MustBuild()
+		nonce, err := sfv.String().Value(*d.nonce).Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create nonce parameter: %w", err)
+		}
+		params.Set("nonce", nonce)
 	}
+
 	if d.tag != nil {
-		params.Values["tag"] = sfv.String().Value(*d.tag).MustBuild()
+		tag, err := sfv.String().Value(*d.tag).Build()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create tag parameter: %w", err)
+		}
+		params.Set("tag", tag)
 	}
-	
+
 	// Add additional parameters
-	if d.additionalParams != nil && d.additionalParams.Values != nil {
-		for key, value := range d.additionalParams.Values {
-			params.Values[key] = value
+	if len(d.params) > 0 {
+		for key, value := range d.params {
+			bi, err := sfv.BareItemFrom(value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert parameter %q: %w", key, err)
+			}
+			params.Set(key, bi)
+
 		}
 	}
-	
+
 	// Marshal as InnerList manually
 	var buf bytes.Buffer
 	buf.WriteByte('(')
-	
+
 	for i, component := range d.components {
 		if i > 0 {
 			buf.WriteByte(' ')
@@ -499,17 +372,17 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		}
 		buf.Write(componentBytes)
 	}
-	
+
 	buf.WriteByte(')')
-	
+
 	// Add parameters if any exist
-	if len(params.Values) > 0 {
+	if len(params.Keys()) > 0 {
 		paramBytes, err := params.MarshalSFV()
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal parameters: %w", err)
 		}
 		buf.Write(paramBytes)
 	}
-	
+
 	return buf.Bytes(), nil
 }

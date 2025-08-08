@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lestrrat-go/htmsig/internal/common"
+	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -153,7 +153,7 @@ func (rb *ResponseBuilder) Build() ([]byte, error) {
 		seenComponents[componentID] = true
 
 		// Parse component identifier
-		component, err := common.ParseComponent(componentID)
+		component, err := component.Parse([]byte(componentID))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse component identifier %q: %w", componentID, err)
 		}
@@ -188,7 +188,7 @@ func (rb *ResponseBuilder) Build() ([]byte, error) {
 }
 
 // getComponentValue retrieves the component value for a response component
-func (rb *ResponseBuilder) getComponentValue(component common.Component) (string, error) {
+func (rb *ResponseBuilder) getComponentValue(component component.Identifier) (string, error) {
 	// Check if this component should be derived from the request (req parameter)
 	if component.HasParameter("req") {
 		return rb.getRequestComponentValue(component)
@@ -204,15 +204,15 @@ func (rb *ResponseBuilder) getComponentValue(component common.Component) (string
 }
 
 // getRequestComponentValue handles components from the request (req parameter)
-func (rb *ResponseBuilder) getRequestComponentValue(component common.Component) (string, error) {
+func (rb *ResponseBuilder) getRequestComponentValue(comp component.Identifier) (string, error) {
 	// Create a temporary request builder to handle request components
-	reqBuilder := Request(rb.req)
+	//	reqBuilder := Request(rb.req)
 
 	// Create a new component without the req parameter for the request builder
-	requestComponent := common.NewComponent(component.Name())
-	for _, key := range component.Parameters() {
+	requestComponent := component.New(comp.Name())
+	for _, key := range comp.Parameters() {
 		var value any
-		if err := component.GetParameter(key, &value); err != nil {
+		if err := comp.GetParameter(key, &value); err != nil {
 			return "", fmt.Errorf("failed to get parameter %q: %w", key, err)
 		}
 		if key != "req" {
@@ -220,11 +220,12 @@ func (rb *ResponseBuilder) getRequestComponentValue(component common.Component) 
 		}
 	}
 
-	return reqBuilder.getComponentValue(requestComponent)
+	// return reqBuilder.getComponentValue(requestComponent)
+	return "", fmt.Errorf("OOPS")
 }
 
 // getResponseDerivedComponentValue handles response-specific derived components
-func (rb *ResponseBuilder) getResponseDerivedComponentValue(component common.Component) (string, error) {
+func (rb *ResponseBuilder) getResponseDerivedComponentValue(component component.Identifier) (string, error) {
 	switch component.Name() {
 	case "@status":
 		// The @status component is the three-digit HTTP status code
@@ -236,7 +237,7 @@ func (rb *ResponseBuilder) getResponseDerivedComponentValue(component common.Com
 }
 
 // getResponseHeaderFieldValue handles HTTP response header fields
-func (rb *ResponseBuilder) getResponseHeaderFieldValue(component common.Component) (string, error) {
+func (rb *ResponseBuilder) getResponseHeaderFieldValue(component component.Identifier) (string, error) {
 	// Get header values (case-insensitive)
 	values := rb.resp.Header.Values(component.Name())
 	if len(values) == 0 {
@@ -293,7 +294,7 @@ func (rb *ResponseBuilder) buildSignatureParamsLine() (string, error) {
 	// Add each component as a string item to the inner list
 	for _, comp := range rb.components {
 		// Parse the component to separate the identifier from its parameters
-		component, err := common.ParseComponent(comp)
+		component, err := component.Parse([]byte(comp))
 		if err != nil {
 			return "", fmt.Errorf("failed to parse component identifier %q: %w", comp, err)
 		}

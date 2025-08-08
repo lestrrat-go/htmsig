@@ -2,6 +2,7 @@ package input
 
 import (
 	"fmt"
+
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -38,7 +39,7 @@ func (b *ValueBuilder) Build() (*Value, error) {
 	if len(b.val.definitions) == 0 {
 		return nil, fmt.Errorf("at least one definition is required")
 	}
-	
+
 	return b.val, nil
 }
 
@@ -83,29 +84,29 @@ func Parse(data []byte) (*Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Signature-Input header: %w", err)
 	}
-	
+
 	// Signature-Input must be a Dictionary
 	dict, ok := result.(*sfv.Dictionary)
 	if !ok {
 		return nil, fmt.Errorf("Signature-Input must be a Dictionary, got %T", result)
 	}
-	
+
 	// Create Value and extract all signature definitions
 	builder := NewValueBuilder()
-	
+
 	// Iterate through dictionary keys (signature labels)
 	for _, key := range dict.Keys() {
 		value, exists := dict.Get(key)
 		if !exists {
 			continue // Should not happen, but be safe
 		}
-		
+
 		// Each signature must be an InnerList
 		innerList, ok := value.(*sfv.InnerList)
 		if !ok {
 			return nil, fmt.Errorf("signature %q must be an InnerList, got %T", key, value)
 		}
-		
+
 		// Extract components from InnerList
 		components := make([]string, innerList.Len())
 		for i := 0; i < innerList.Len(); i++ {
@@ -113,19 +114,19 @@ func Parse(data []byte) (*Value, error) {
 			if !ok {
 				return nil, fmt.Errorf("failed to get component %d from signature %q", i, key)
 			}
-			
+
 			var component string
-			if err := item.Value(&component); err != nil {
+			if err := item.GetValue(&component); err != nil {
 				return nil, fmt.Errorf("failed to extract component %d from signature %q: %w", i, key, err)
 			}
 			components[i] = component
 		}
-		
+
 		// Create definition builder with label and components
 		defBuilder := NewDefinitionBuilder().
 			Label(key).
 			Components(components...)
-		
+
 		// Extract parameters from InnerList
 		params := innerList.Parameters()
 		if params != nil {
@@ -133,57 +134,57 @@ func Parse(data []byte) (*Value, error) {
 			if created, exists := params.Values["created"]; exists {
 				if created.Type() == sfv.IntegerType {
 					var timestamp int64
-					if err := created.Value(&timestamp); err == nil {
+					if err := created.GetValue(&timestamp); err == nil {
 						defBuilder.Created(timestamp)
 					}
 				}
 			}
-			
+
 			if expires, exists := params.Values["expires"]; exists {
 				if expires.Type() == sfv.IntegerType {
 					var timestamp int64
-					if err := expires.Value(&timestamp); err == nil {
+					if err := expires.GetValue(&timestamp); err == nil {
 						defBuilder.Expires(timestamp)
 					}
 				}
 			}
-			
+
 			if keyid, exists := params.Values["keyid"]; exists {
 				if keyid.Type() == sfv.StringType {
 					var keyID string
-					if err := keyid.Value(&keyID); err == nil {
+					if err := keyid.GetValue(&keyID); err == nil {
 						defBuilder.KeyID(keyID)
 					}
 				}
 			}
-			
+
 			if alg, exists := params.Values["alg"]; exists {
 				if alg.Type() == sfv.StringType {
 					var algorithm string
-					if err := alg.Value(&algorithm); err == nil {
+					if err := alg.GetValue(&algorithm); err == nil {
 						defBuilder.Algorithm(algorithm)
 					}
 				}
 			}
-			
+
 			if nonce, exists := params.Values["nonce"]; exists {
 				if nonce.Type() == sfv.StringType {
 					var nonceVal string
-					if err := nonce.Value(&nonceVal); err == nil {
+					if err := nonce.GetValue(&nonceVal); err == nil {
 						defBuilder.Nonce(nonceVal)
 					}
 				}
 			}
-			
+
 			if tag, exists := params.Values["tag"]; exists {
 				if tag.Type() == sfv.StringType {
 					var tagVal string
-					if err := tag.Value(&tagVal); err == nil {
+					if err := tag.GetValue(&tagVal); err == nil {
 						defBuilder.Tag(tagVal)
 					}
 				}
 			}
-			
+
 			// Handle additional parameters
 			for paramKey, paramValue := range params.Values {
 				switch paramKey {
@@ -196,16 +197,16 @@ func Parse(data []byte) (*Value, error) {
 				}
 			}
 		}
-		
+
 		// Build the definition with proper validation
 		def, err := defBuilder.Build()
 		if err != nil {
 			return nil, fmt.Errorf("invalid signature definition %q: %w", key, err)
 		}
-		
+
 		builder.AddDefinition(def)
 	}
-	
+
 	return builder.Build()
 }
 
@@ -214,7 +215,7 @@ func Parse(data []byte) (*Value, error) {
 func (v *Value) MarshalSFV() ([]byte, error) {
 	// Create a dictionary
 	dict := sfv.NewDictionary()
-	
+
 	// Add each definition to the dictionary
 	for _, def := range v.definitions {
 		// Marshal the definition to get the InnerList bytes
@@ -222,7 +223,7 @@ func (v *Value) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal definition %q: %w", def.Label(), err)
 		}
-		
+
 		// Parse the definition bytes as an InnerList
 		// Since we know it's an InnerList from our MarshalSFV implementation,
 		// we can parse it back
@@ -230,7 +231,7 @@ func (v *Value) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse marshaled definition %q: %w", def.Label(), err)
 		}
-		
+
 		// The parser returns a List, but for single InnerList, we need to extract it
 		var innerList *sfv.InnerList
 		switch v := result.(type) {
@@ -246,16 +247,16 @@ func (v *Value) MarshalSFV() ([]byte, error) {
 				}
 			}
 		}
-		
+
 		if innerList == nil {
 			return nil, fmt.Errorf("expected InnerList for definition %q, got %T", def.Label(), result)
 		}
-		
+
 		// Set the definition in the dictionary
 		if err := dict.Set(def.Label(), innerList); err != nil {
 			return nil, fmt.Errorf("failed to set definition %q in dictionary: %w", def.Label(), err)
 		}
 	}
-	
+
 	return dict.MarshalSFV()
 }

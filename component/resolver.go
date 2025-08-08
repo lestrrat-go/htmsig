@@ -14,8 +14,8 @@ type responseKey struct{}
 type Mode int
 
 const (
-	RequestMode Mode = iota
-	ResponseMode
+	ModeRequest Mode = iota
+	ModeResponse
 )
 
 // WithMode adds a mode to the context for later retrieval. IF unspecified,
@@ -27,7 +27,7 @@ func WithMode(ctx context.Context, mode Mode) context.Context {
 func ModeFromContext(ctx context.Context) Mode {
 	mode, ok := ctx.Value(modeKey{}).(Mode)
 	if !ok {
-		return RequestMode // Default to RequestMode if not set
+		return ModeRequest // Default to ModeRequest if not set
 	}
 	return mode
 }
@@ -57,9 +57,9 @@ func ResponseFromContext(ctx context.Context) (*http.Response, bool) {
 func Resolve(ctx context.Context, comp Identifier) (string, error) {
 	mode := ModeFromContext(ctx)
 	switch mode {
-	case RequestMode:
+	case ModeRequest:
 		return resolveRequest(ctx, comp)
-	case ResponseMode:
+	case ModeResponse:
 		return resolveResponse(ctx, comp)
 	default:
 		return "", fmt.Errorf("unknown mode: %d", mode)

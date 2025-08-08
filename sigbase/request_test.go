@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lestrrat-go/htmsig"
+	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/sigbase"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +28,7 @@ func TestRequestBuilder(t *testing.T) {
 
 	t.Run("Components only", func(t *testing.T) {
 		base, err := sigbase.Request(req).
-			Components(htmsig.MethodComponent(), "@target-uri", "host").
+			Components(component.Method(), component.TargetURI(), component.New("host")).
 			Build()
 		require.NoError(t, err, "Failed to build signature base")
 
@@ -46,7 +46,7 @@ func TestRequestBuilder(t *testing.T) {
 	t.Run("With signature parameters", func(t *testing.T) {
 		// sigbase now properly handles signature parameters again
 		base, err := sigbase.Request(req).
-			Components("@method", "host").
+			Components(component.Method(), component.New("host")).
 			Created(1618884473).
 			KeyID("test-key").
 			Algorithm("rsa-pss-sha512").
@@ -75,7 +75,7 @@ func TestRequestBuilder(t *testing.T) {
 
 	t.Run("Error cases", func(t *testing.T) {
 		// No request
-		_, err := sigbase.Request(nil).Components("@method").Build()
+		_, err := sigbase.Request(nil).Components(component.Method()).Build()
 		require.Error(t, err, "Expected error for nil request")
 		require.Contains(t, err.Error(), "HTTP request is required", "Error message should mention missing HTTP request")
 
@@ -85,7 +85,7 @@ func TestRequestBuilder(t *testing.T) {
 		require.Contains(t, err.Error(), "at least one component is required", "Error message should mention missing components")
 
 		// Duplicate components
-		_, err = sigbase.Request(req).Components("@method", "@method").Build()
+		_, err = sigbase.Request(req).Components(component.Method(), component.Method()).Build()
 		require.Error(t, err, "Expected error for duplicate components")
 		require.Contains(t, err.Error(), "duplicate component identifier", "Error message should mention duplicate components")
 	})
@@ -226,7 +226,7 @@ func TestResponseBuilder(t *testing.T) {
 
 	t.Run("Error cases", func(t *testing.T) {
 		// No response
-		_, err := sigbase.Response(nil).Components("@status").Build()
+		_, err := sigbase.Response(nil).Components(component.Status()).Build()
 		require.Error(t, err, "Expected error for nil response")
 		require.Contains(t, err.Error(), "HTTP response is required", "Error message should mention missing HTTP response")
 
