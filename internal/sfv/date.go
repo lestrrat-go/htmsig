@@ -7,7 +7,7 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
-type DateItem = fullItem[*DateBareItem]
+type DateItem = fullItem[*DateBareItem, int64]
 type DateBareItem struct {
 	uvalue[int64]
 }
@@ -40,9 +40,9 @@ func (d DateBareItem) Value(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, d.value)
 }
 
-func (d *DateBareItem) With(params *Parameters) Item {
-	return &fullItem[*DateBareItem]{
+func (d *DateBareItem) ToItem() Item {
+	return &fullItem[*DateBareItem, int64]{
 		bare:   d,
-		params: params,
+		params: NewParameters(),
 	}
 }

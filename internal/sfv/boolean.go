@@ -59,9 +59,9 @@ func (b BooleanBareItem) MarshalSFV() ([]byte, error) {
 	return falseBareItemBytes, nil
 }
 
-func (b BooleanBareItem) With(params *Parameters) Item {
+func (b BooleanBareItem) ToItem() Item {
 	return &BooleanItem{
-		BareItem: b,
-		params:   params,
+		bare:   b,
+		params: NewParameters(),
 	}
 }

@@ -46,15 +46,6 @@ func (iv uvalue[T]) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, iv.value)
 }
 
-type bareItem[UT uvalue[T], T any] interface {
-	Marshaler
-
-	Type() int
-	GetValue(dst any) error
-	Value() T
-	With(*Parameters) Item
-}
-
 type fullItem[BT BareItem, UT any] struct {
 	bare    BT
 	valuefn func() UT
@@ -102,14 +93,9 @@ func (item *fullItem[BT, UT]) With(params *Parameters) Item {
 	}
 }
 
-// A BareItem represents a bare item, which is the itemValue plus the item
-// type. A bare item cannot carry parameters. However, it _can_ be upgraded
-// to a full Item by calling With().
-type BareItem interface {
+type CoreItem interface {
 	Marshaler
-
 	Type() int
-
 	// GetValue is a method that assigns the underlying value of the item to dst.
 	// It is used to retrieve the value without needing to know the type, or
 	// without having to go through type conversion.
@@ -117,15 +103,23 @@ type BareItem interface {
 	// If you already know the type of the value, you could use the Value() method
 	// instead, which returns the value directly.
 	GetValue(dst any) error
+}
 
-	// Creates a new Item with the given parameters
-	With(*Parameters) Item
+// A BareItem represents a bare item, which is the itemValue plus the item
+// type. A bare item cannot carry parameters. However, it _can_ be upgraded
+// to a full Item by calling With().
+type BareItem interface {
+	CoreItem
+
+	// ToItem creates a new Item from this bare item
+	ToItem() Item
 }
 
 // Item represents a single item in the SFV (Structured Field Value) format.
 // It is essentially a bare item with parameters
 type Item interface {
-	BareItem
+	CoreItem
 
+	With(*Parameters) Item
 	Parameters() *Parameters
 }

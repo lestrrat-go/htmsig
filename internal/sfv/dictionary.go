@@ -99,7 +99,7 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 				valueBytes, err = v.MarshalSFV()
 			case BareItem:
 				// Convert BareItem to Item for marshaling
-				item := v.With(nil)
+				item := v.ToItem()
 				valueBytes, err = item.MarshalSFV()
 			case *InnerList:
 				valueBytes, err = v.MarshalSFV()

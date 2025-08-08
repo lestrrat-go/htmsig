@@ -281,7 +281,7 @@ func (p *parseContext) parseDictionary() (*Dictionary, error) {
 				v.With(params)
 			case BareItem:
 				// Convert BareItem to Item when parameters are present
-				value = v.With(params)
+				value = v.ToItem().With(params)
 			}
 		}
 
@@ -487,7 +487,7 @@ func (p *parseContext) parseItem() (Item, error) {
 		return nil, fmt.Errorf("sfv: failed to parse parameters: %w", err)
 	}
 
-	return bareItem.With(params), nil
+	return bareItem.ToItem().With(params), nil
 }
 
 func isDigit(c byte) bool {

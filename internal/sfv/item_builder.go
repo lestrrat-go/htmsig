@@ -21,7 +21,7 @@ func (bb *BareItemBuilder[B, T]) ToItem() *ItemBuilder {
 	}
 
 	return &ItemBuilder{
-		value: bb.value.With(NewParameters()),
+		value: bb.value.ToItem(),
 	}
 }
 
@@ -62,7 +62,7 @@ func (bb *BareItemBuilder[B, T]) Parameter(k string, v BareItem) *ItemBuilder {
 		return &ib
 	}
 
-	ib.value = bb.value.With(NewParameters())
+	ib.value = bb.value.ToItem()
 	if err := ib.value.Parameters().Set(k, v); err != nil {
 		ib.err = fmt.Errorf("error setting parameter %q: %w", k, err)
 		return &ib

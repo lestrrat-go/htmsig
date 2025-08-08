@@ -56,17 +56,17 @@ func (enc *Encoder) postProcessParameters(data []byte) []byte {
 		// Standard format - no changes needed
 		return data
 	}
-	
+
 	if enc.parameterSpacing == "" {
 		// Remove spaces after semicolons for HTTP Message Signature format
 		return bytes.ReplaceAll(data, []byte("; "), []byte(";"))
 	}
-	
+
 	// Custom spacing - replace default " " with custom spacing
 	if enc.parameterSpacing != " " {
 		return bytes.ReplaceAll(data, []byte("; "), []byte(";"+enc.parameterSpacing))
 	}
-	
+
 	return data
 }
 
@@ -222,7 +222,7 @@ func sliceToList(rv reflect.Value) (*List, error) {
 		case Item:
 			values[i] = v
 		case BareItem:
-			values[i] = v.With(nil)
+			values[i] = v.ToItem()
 		default:
 			values[i] = sfvValue
 		}
@@ -245,7 +245,7 @@ func arrayToList(rv reflect.Value) (*List, error) {
 		case Item:
 			values[i] = v
 		case BareItem:
-			values[i] = v.With(nil)
+			values[i] = v.ToItem()
 		default:
 			values[i] = sfvValue
 		}
@@ -288,7 +288,7 @@ func mapToDictionary(rv reflect.Value) (*Dictionary, error) {
 			dictValue = v
 		case BareItem:
 			// Convert BareItem to Item
-			dictValue = v.With(nil)
+			dictValue = v.ToItem()
 		case *List:
 			// Convert List to InnerList for dictionary
 			innerList := &InnerList{values: make([]Item, 0)}
@@ -355,7 +355,7 @@ func structToDictionary(rv reflect.Value) (*Dictionary, error) {
 			dictValue = v
 		case BareItem:
 			// Convert BareItem to Item
-			dictValue = v.With(nil)
+			dictValue = v.ToItem()
 		case *List:
 			// Convert List to InnerList for dictionary
 			innerList := &InnerList{values: make([]Item, 0)}

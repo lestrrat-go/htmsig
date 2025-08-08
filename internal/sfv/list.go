@@ -27,7 +27,7 @@ func (ilb *InnerListBuilder) Add(item any) *InnerListBuilder {
 	if ilb.err != nil {
 		return ilb
 	}
-	
+
 	if err := ilb.innerList.Add(item); err != nil {
 		ilb.err = fmt.Errorf("failed to add item to inner list: %w", err)
 	}
@@ -39,11 +39,11 @@ func (ilb *InnerListBuilder) Parameter(key string, value BareItem) *InnerListBui
 	if ilb.err != nil {
 		return ilb
 	}
-	
+
 	if ilb.innerList.params == nil {
 		ilb.innerList.params = &Parameters{Values: make(map[string]BareItem)}
 	}
-	
+
 	if err := ilb.innerList.params.Set(key, value); err != nil {
 		ilb.err = fmt.Errorf("failed to set parameter %q: %w", key, err)
 	}
@@ -77,7 +77,7 @@ func (il *InnerList) Add(in any) error {
 	case Item:
 		item = v
 	case BareItem:
-		item = v.With(nil)
+		item = v.ToItem()
 	default:
 		return fmt.Errorf("item must be of type Item or BareItem, got %T", item)
 	}
@@ -156,7 +156,7 @@ func (l *List) Add(in any) error {
 	case Item:
 		l.values = append(l.values, v)
 	case BareItem:
-		l.values = append(l.values, v.With(nil))
+		l.values = append(l.values, v.ToItem())
 	case *InnerList:
 		l.values = append(l.values, v)
 	default:

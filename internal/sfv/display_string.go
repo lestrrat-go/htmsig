@@ -3,11 +3,9 @@ package sfv
 import (
 	"bytes"
 	"fmt"
-
-	"github.com/lestrrat-go/blackmagic"
 )
 
-type DisplayStringItem = fullItem[*DisplayStringBareItem]
+type DisplayStringItem = fullItem[*DisplayStringBareItem, string]
 type DisplayStringBareItem struct {
 	uvalue[string]
 }
@@ -17,22 +15,8 @@ func DisplayString() *BareItemBuilder[*DisplayStringBareItem, string] {
 	var v DisplayStringBareItem
 	return &BareItemBuilder[*DisplayStringBareItem, string]{
 		value:  &v,
-		setter: (&v).setValue,
+		setter: (&v).SetValue,
 	}
-}
-
-func (d *DisplayStringBareItem) setValue(value string) error {
-	d.value = value
-	return nil
-}
-
-func NewDisplayString() *DisplayStringBareItem {
-	return &DisplayStringBareItem{}
-}
-
-func (d *DisplayStringBareItem) SetValue(value string) *DisplayStringBareItem {
-	d.value = value
-	return d
 }
 
 func (d DisplayStringBareItem) MarshalSFV() ([]byte, error) {
@@ -60,13 +44,9 @@ func (d DisplayStringBareItem) Type() int {
 	return DisplayStringType
 }
 
-func (d DisplayStringBareItem) Value(dst any) error {
-	return blackmagic.AssignIfCompatible(dst, d.value)
-}
-
-func (d *DisplayStringBareItem) With(params *Parameters) Item {
+func (d *DisplayStringBareItem) ToItem() Item {
 	return &DisplayStringItem{
 		bare:   d,
-		params: params,
+		params: NewParameters(),
 	}
 }
