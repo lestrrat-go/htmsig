@@ -782,7 +782,7 @@ func (p *parseContext) parseDate() (*DateBareItem, error) {
 	}
 
 	var intValue int64
-	if err := value.Value(&intValue); err != nil {
+	if err := value.GetValue(&intValue); err != nil {
 		return nil, fmt.Errorf("sfv: failed to convert date value to int64: %w", err)
 	}
 

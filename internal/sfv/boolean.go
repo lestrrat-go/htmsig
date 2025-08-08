@@ -43,7 +43,7 @@ func (b BooleanBareItem) Type() int {
 	return BooleanType
 }
 
-func (b BooleanBareItem) Value(dst any) error {
+func (b BooleanBareItem) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, bool(b))
 }
 

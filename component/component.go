@@ -48,7 +48,7 @@ func (c *Identifier) HasParameter(key string) bool {
 
 // GetParameter gets a parameter value
 func (c *Identifier) GetParameter(key string, dst any) error {
-	return blackmagic.AssignIfCompatible(c.parameters[key], dst)
+	return blackmagic.AssignIfCompatible(dst, c.parameters[key])
 }
 
 func (c *Identifier) SFV() (sfv.Item, error) {
@@ -69,33 +69,10 @@ func (c *Identifier) SFV() (sfv.Item, error) {
 
 // String returns the RFC 9421 string representation of the component identifier
 func (c *Identifier) MarshalSFV() ([]byte, error) {
-	// Identifier names are always strings
-	s := sfv.String().Value(c.name)
-	for k, v := range c.parameters {
-		var bi sfv.BareItem
-		switch v := v.(type) {
-		case bool:
-			if v {
-				bi = sfv.True()
-			} else {
-				bi = sfv.False()
-			}
-		case int64:
-			bi = sfv.Integer().Value(v).MustBuild()
-		case float64:
-			bi = sfv.Decimal().Value(v).MustBuild()
-		case string:
-			bi = sfv.String().Value(v).MustBuild()
-		default:
-			return nil, fmt.Errorf("unsupported parameter type %T for key %s", v, k)
-		}
-		s.Parameter(k, bi)
-	}
-	sfvc, err := s.Build()
+	sfvc, err := c.SFV()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build SFV component: %w", err)
+		return nil, fmt.Errorf("failed to create SFV item: %w", err)
 	}
-
 	enc := sfv.NewEncoder()
 	enc.SetParameterSpacing("")
 	return enc.Encode(sfvc)
@@ -110,7 +87,7 @@ func Parse(input []byte) (Identifier, error) {
 
 	// Convert the parsed item to an Identifier
 	var name string
-	if err := item.Value(&name); err != nil {
+	if err := item.GetValue(&name); err != nil {
 		return Identifier{}, fmt.Errorf("failed to get component name: %w", err)
 	}
 	id := Identifier{
@@ -124,7 +101,11 @@ func Parse(input []byte) (Identifier, error) {
 		if err := params.Get(pname, &value); err != nil {
 			return Identifier{}, fmt.Errorf("failed to get parameter value for %q: %w", pname, err)
 		}
-		id.parameters[pname] = value.Value()
+		var val any
+		if err := value.GetValue(&val); err != nil {
+			return Identifier{}, fmt.Errorf("failed to convert parameter %q value: %w", pname, err)
+		}
+		id.parameters[pname] = val
 	}
 
 	return id, nil

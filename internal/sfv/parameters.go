@@ -89,7 +89,7 @@ func (p *Parameters) MarshalSFV() ([]byte, error) {
 		// Only add '=' if the value is not Boolean true
 		if value.Type() == BooleanType {
 			var boolVal bool
-			if err := value.Value(&boolVal); err != nil {
+			if err := value.GetValue(&boolVal); err != nil {
 				return nil, fmt.Errorf("error getting boolean value for parameter %q: %w", key, err)
 			}
 			if boolVal {

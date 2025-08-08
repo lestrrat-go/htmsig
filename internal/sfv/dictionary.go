@@ -59,14 +59,14 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 		case Item:
 			if v.Type() == BooleanType {
 				var b bool
-				if err := v.Value(&b); err == nil && b {
+				if err := v.GetValue(&b); err == nil && b {
 					isBareKey = true
 				}
 			}
 		case BareItem:
 			if v.Type() == BooleanType {
 				var b bool
-				if err := v.Value(&b); err == nil && b {
+				if err := v.GetValue(&b); err == nil && b {
 					isBareKey = true
 				}
 			}

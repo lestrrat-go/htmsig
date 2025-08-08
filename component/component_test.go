@@ -21,6 +21,7 @@ func TestComponent(t *testing.T) {
 		comp := component.New("@method").WithParameter("req", true)
 		require.Equal(t, "@method", comp.Name())
 		require.True(t, comp.HasParameter("req"))
+
 		var reqVal bool
 		require.NoError(t, comp.GetParameter("req", &reqVal))
 		require.True(t, reqVal)
@@ -68,7 +69,7 @@ func TestParseComponent(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    string
-		expected Identifier
+		expected component.Identifier
 		wantErr  bool
 	}{
 		{
@@ -100,7 +101,7 @@ func TestParseComponent(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			comp, err := ParseComponent(tt.input)
+			comp, err := component.Parse([]byte(tt.input))
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -132,13 +133,13 @@ func TestComponentRoundTrip(t *testing.T) {
 	for _, input := range testCases {
 		t.Run(input, func(t *testing.T) {
 			// Parse -> String should produce equivalent results
-			comp, err := ParseComponent(input)
+			comp, err := component.Parse([]byte(input))
 			require.NoError(t, err)
 
 			// Parse the string representation again
 			encoded, err := comp.MarshalSFV()
 			require.NoError(t, err)
-			comp2, err := ParseComponent(string(encoded))
+			comp2, err := component.Parse(encoded)
 			require.NoError(t, err)
 
 			// Should be equivalent
