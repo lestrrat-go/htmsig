@@ -249,7 +249,7 @@ func TestMarshalNil(t *testing.T) {
 
 func TestMarshalItem(t *testing.T) {
 	// Test marshaling an SFV Item directly
-	item := sfv.String().Value("hello").MustBuild().With(nil)
+	item := sfv.String().Value("hello").MustBuild().ToItem()
 	result, err := sfv.Marshal(item)
 	if err != nil {
 		t.Errorf("Marshal() unexpected error: %v", err)
@@ -266,9 +266,9 @@ func TestMarshalList(t *testing.T) {
 	// Test marshaling an SFV List directly
 	var list sfv.List
 
-	list.Add(sfv.String().Value("hello").MustBuild().With(nil))
-	list.Add(sfv.Integer().Value(42).MustBuild().With(nil))
-	list.Add(sfv.True().With(nil))
+	list.Add(sfv.String().Value("hello").MustBuild().ToItem())
+	list.Add(sfv.Integer().Value(42).MustBuild().ToItem())
+	list.Add(sfv.True().ToItem())
 
 	result, err := sfv.Marshal(list)
 	if err != nil {
@@ -353,9 +353,9 @@ func TestItemMarshalSFVMethods(t *testing.T) {
 func TestCollectionMarshalSFVMethods(t *testing.T) {
 	// Test List.MarshalSFV()
 	var list sfv.List
-	list.Add(sfv.String().Value("hello").MustBuild().With(nil))
-	list.Add(sfv.Integer().Value(42).MustBuild().With(nil))
-	list.Add(sfv.True().With(nil))
+	list.Add(sfv.String().Value("hello").MustBuild().ToItem())
+	list.Add(sfv.Integer().Value(42).MustBuild().ToItem())
+	list.Add(sfv.True().ToItem())
 
 	result, err := list.MarshalSFV()
 	if err != nil {
@@ -370,9 +370,9 @@ func TestCollectionMarshalSFVMethods(t *testing.T) {
 
 	// Test Dictionary.MarshalSFV()
 	dict := sfv.NewDictionary()
-	dict.Set("name", sfv.String().Value("John").MustBuild().With(nil))
-	dict.Set("age", sfv.Integer().Value(30).MustBuild().With(nil))
-	dict.Set("active", sfv.True().With(nil))
+	dict.Set("name", sfv.String().Value("John").MustBuild().ToItem())
+	dict.Set("age", sfv.Integer().Value(30).MustBuild().ToItem())
+	dict.Set("active", sfv.True().ToItem())
 
 	result, err = dict.MarshalSFV()
 	if err != nil {
@@ -388,8 +388,8 @@ func TestCollectionMarshalSFVMethods(t *testing.T) {
 	// Test InnerList.MarshalSFV()
 	var innerList sfv.InnerList
 
-	innerList.Add(sfv.String().Value("foo").MustBuild().With(nil))
-	innerList.Add(sfv.String().Value("bar").MustBuild().With(nil))
+	innerList.Add(sfv.String().Value("foo").MustBuild().ToItem())
+	innerList.Add(sfv.String().Value("bar").MustBuild().ToItem())
 
 	result, err = innerList.MarshalSFV()
 	if err != nil {
@@ -406,8 +406,8 @@ func TestCollectionMarshalSFVMethods(t *testing.T) {
 func TestMarshalDictionary(t *testing.T) {
 	// Test marshaling an SFV Dictionary directly
 	dict := sfv.NewDictionary()
-	dict.Set("name", sfv.String().Value("John").MustBuild().With(nil))
-	dict.Set("age", sfv.Integer().Value(30).MustBuild().With(nil))
+	dict.Set("name", sfv.String().Value("John").MustBuild().ToItem())
+	dict.Set("age", sfv.Integer().Value(30).MustBuild().ToItem())
 
 	result, err := sfv.Marshal(dict)
 	if err != nil {

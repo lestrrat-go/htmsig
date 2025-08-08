@@ -1,12 +1,90 @@
 package sfv
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
 )
+
+type Encoder struct {
+	dst              io.Writer
+	parameterSpacing string // " " ---> "component; parameter", "" ---> "component;parameter"
+}
+
+// NewEncoder returns a new encoder with default settings (standard SFV formatting with spaces)
+func NewEncoder(dst io.Writer) *Encoder {
+	return &Encoder{
+		dst:              dst,
+		parameterSpacing: " ", // Standard SFV format
+	}
+}
+
+// SetParameterSpacing sets the spacing used after semicolons in parameters.
+// Use " " for standard SFV formatting, "" for HTTP Message Signature formatting.
+func (enc *Encoder) SetParameterSpacing(spacing string) {
+	enc.parameterSpacing = spacing
+}
+
+// Encode encodes the given value using the encoder's settings.
+func (enc *Encoder) Encode(v any) error {
+	if v == nil {
+		return fmt.Errorf(`cannot encode nil value`)
+	}
+
+	if marshaler, ok := v.(Marshaler); ok {
+		result, err := marshaler.MarshalSFV()
+		if err != nil {
+			return err
+		}
+		processed := enc.postProcessParameters(result)
+		if _, err = enc.dst.Write(processed); err != nil {
+			return fmt.Errorf("failed to write encoded data: %w", err)
+		}
+	}
+
+	// Convert to SFV type and marshal
+	sfvValue, err := valueToSFV(v)
+	if err != nil {
+		return fmt.Errorf("failed to convert value to SFV: %w", err)
+	}
+
+	// Use the marshaler interface directly to avoid recursion
+	if marshaler, ok := sfvValue.(Marshaler); ok {
+		data, err := marshaler.MarshalSFV()
+		if err != nil {
+			return err
+		}
+		processed := enc.postProcessParameters(data)
+		_, err = enc.dst.Write(processed)
+		return err
+	}
+	
+	return fmt.Errorf("SFV value does not implement Marshaler interface")
+}
+
+// postProcessParameters adjusts parameter spacing based on encoder settings
+func (enc *Encoder) postProcessParameters(data []byte) []byte {
+	if enc.parameterSpacing == " " {
+		// Standard format - no changes needed
+		return data
+	}
+
+	if enc.parameterSpacing == "" {
+		// Remove spaces after semicolons for HTTP Message Signature format
+		return bytes.ReplaceAll(data, []byte("; "), []byte(";"))
+	}
+
+	// Custom spacing - replace default " " with custom spacing
+	if enc.parameterSpacing != " " {
+		return bytes.ReplaceAll(data, []byte("; "), []byte(";"+enc.parameterSpacing))
+	}
+
+	return data
+}
 
 type Marshaler interface {
 	MarshalSFV() ([]byte, error)
@@ -27,7 +105,11 @@ func Marshal(v any) ([]byte, error) {
 		return nil, err
 	}
 
-	return Marshal(sfvValue)
+	if marshaler, ok := sfvValue.(Marshaler); ok {
+		return marshaler.MarshalSFV()
+	}
+	
+	return nil, fmt.Errorf("SFV value does not implement Marshaler interface")
 }
 
 // valueToSFV converts a Go value to an SFV type (Item, List, Dictionary, or InnerList)
@@ -160,7 +242,7 @@ func sliceToList(rv reflect.Value) (*List, error) {
 		case Item:
 			values[i] = v
 		case BareItem:
-			values[i] = v.With(nil)
+			values[i] = v.ToItem()
 		default:
 			values[i] = sfvValue
 		}
@@ -183,7 +265,7 @@ func arrayToList(rv reflect.Value) (*List, error) {
 		case Item:
 			values[i] = v
 		case BareItem:
-			values[i] = v.With(nil)
+			values[i] = v.ToItem()
 		default:
 			values[i] = sfvValue
 		}
@@ -226,7 +308,7 @@ func mapToDictionary(rv reflect.Value) (*Dictionary, error) {
 			dictValue = v
 		case BareItem:
 			// Convert BareItem to Item
-			dictValue = v.With(nil)
+			dictValue = v.ToItem()
 		case *List:
 			// Convert List to InnerList for dictionary
 			innerList := &InnerList{values: make([]Item, 0)}
@@ -293,7 +375,7 @@ func structToDictionary(rv reflect.Value) (*Dictionary, error) {
 			dictValue = v
 		case BareItem:
 			// Convert BareItem to Item
-			dictValue = v.With(nil)
+			dictValue = v.ToItem()
 		case *List:
 			// Convert List to InnerList for dictionary
 			innerList := &InnerList{values: make([]Item, 0)}

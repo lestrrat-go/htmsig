@@ -3,6 +3,8 @@ package sfv
 import (
 	"fmt"
 	"strings"
+
+	"github.com/lestrrat-go/blackmagic"
 )
 
 type Dictionary struct {
@@ -32,9 +34,12 @@ func (d *Dictionary) Set(key string, value any) error {
 	return nil
 }
 
-func (d *Dictionary) Get(key string) (any, bool) {
+func (d *Dictionary) GetValue(key string, dst any) error {
 	value, exists := d.values[key]
-	return value, exists
+	if !exists {
+		return fmt.Errorf("key %q not found in dictionary", key)
+	}
+	return blackmagic.AssignIfCompatible(dst, value)
 }
 
 // MarshalSFV implements the Marshaler interface for Dictionary
@@ -45,8 +50,8 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 
 	var parts []string
 	for _, key := range d.keys {
-		value, ok := d.Get(key)
-		if !ok {
+		var value any
+		if err := d.GetValue(key, &value); err != nil {
 			continue
 		}
 
@@ -59,14 +64,14 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 		case Item:
 			if v.Type() == BooleanType {
 				var b bool
-				if err := v.Value(&b); err == nil && b {
+				if err := v.GetValue(&b); err == nil && b {
 					isBareKey = true
 				}
 			}
 		case BareItem:
 			if v.Type() == BooleanType {
 				var b bool
-				if err := v.Value(&b); err == nil && b {
+				if err := v.GetValue(&b); err == nil && b {
 					isBareKey = true
 				}
 			}
@@ -94,7 +99,7 @@ func (d *Dictionary) MarshalSFV() ([]byte, error) {
 				valueBytes, err = v.MarshalSFV()
 			case BareItem:
 				// Convert BareItem to Item for marshaling
-				item := v.With(nil)
+				item := v.ToItem()
 				valueBytes, err = item.MarshalSFV()
 			case *InnerList:
 				valueBytes, err = v.MarshalSFV()

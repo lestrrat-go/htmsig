@@ -2,6 +2,8 @@ package sfv
 
 import "github.com/lestrrat-go/blackmagic"
 
+type BooleanItem = fullItem[BooleanBareItem, bool]
+
 // BooleanBareItem represents a bare boolean value in the SFV format.
 type BooleanBareItem bool
 
@@ -43,7 +45,7 @@ func (b BooleanBareItem) Type() int {
 	return BooleanType
 }
 
-func (b BooleanBareItem) Value(dst any) error {
+func (b BooleanBareItem) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, bool(b))
 }
 
@@ -57,9 +59,9 @@ func (b BooleanBareItem) MarshalSFV() ([]byte, error) {
 	return falseBareItemBytes, nil
 }
 
-func (b BooleanBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: b,
-		params:   params,
+func (b BooleanBareItem) ToItem() Item {
+	return &BooleanItem{
+		bare:   b,
+		params: NewParameters(),
 	}
 }

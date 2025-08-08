@@ -32,14 +32,14 @@ func TestParseIntegerList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -77,14 +77,14 @@ func TestParseDecimalList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -122,14 +122,14 @@ func TestParseStringList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -167,14 +167,14 @@ func TestParseTokenList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -211,14 +211,14 @@ func TestParseByteSequenceList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -255,14 +255,14 @@ func TestParseBooleanList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -299,14 +299,14 @@ func TestParseDateList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -343,14 +343,14 @@ func TestParseDisplayStringList(t *testing.T) {
 
 			for i, expected := range test.expected {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, test.types[i], item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, test.types[i], item.Type())
 
 				var actual interface{}
-				err := item.Value(&actual)
+				err := item.GetValue(&actual)
 				require.NoError(t, err, "Parse(%q) item %d failed to get value", test.input, i)
 
 				require.True(t, reflect.DeepEqual(actual, expected), "Parse(%q) item %d expected %v, got %v", test.input, i, expected, actual)
@@ -386,8 +386,8 @@ func TestParseMixedList(t *testing.T) {
 
 			for i, expectedType := range test.expectedTypes {
 				value, ok := list.Get(i)
-			require.True(t, ok, "Failed to get list item %d", i)
-			item, ok := value.(sfv.Item)
+				require.True(t, ok, "Failed to get list item %d", i)
+				item, ok := value.(sfv.Item)
 				require.True(t, ok, "Parse(%q) item %d expected Item, got %T", test.input, i, value)
 
 				require.Equal(t, expectedType, item.Type(), "Parse(%q) item %d expected type %d, got %d", test.input, i, expectedType, item.Type())

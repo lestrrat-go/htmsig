@@ -7,8 +7,9 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type DateItem = fullItem[*DateBareItem, int64]
 type DateBareItem struct {
-	itemValue[int64]
+	uvalue[int64]
 }
 
 // Date creates a new DateBareItem builder for you to construct a date item with.
@@ -16,22 +17,12 @@ func Date() *BareItemBuilder[*DateBareItem, int64] {
 	var v DateBareItem
 	return &BareItemBuilder[*DateBareItem, int64]{
 		value:  &v,
-		setter: (&v).setValue,
+		setter: (&v).SetValue,
 	}
-}
-
-func (d *DateBareItem) setValue(value int64) error {
-	d.value = value
-	return nil
 }
 
 func NewDate() *DateBareItem {
 	return &DateBareItem{}
-}
-
-func (d *DateBareItem) SetValue(value int64) *DateBareItem {
-	d.value = value
-	return d
 }
 
 func (d DateBareItem) MarshalSFV() ([]byte, error) {
@@ -49,9 +40,9 @@ func (d DateBareItem) Value(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, d.value)
 }
 
-func (d *DateBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: d,
-		params:   params,
+func (d *DateBareItem) ToItem() Item {
+	return &fullItem[*DateBareItem, int64]{
+		bare:   d,
+		params: NewParameters(),
 	}
 }

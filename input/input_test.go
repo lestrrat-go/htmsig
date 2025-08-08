@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,14 @@ func TestParseSignatureInput(t *testing.T) {
 				AddDefinition(
 					input.NewDefinitionBuilder().
 						Label("sig1").
-						Components(input.MethodComponent, input.TargetURIComponent, input.AuthorityComponent, "content-digest", "content-length", "content-type").
+						Components(
+							component.Method(),
+							component.TargetURI(),
+							component.Authority(),
+							component.New("content-digest"),
+							component.New("content-length"),
+							component.New("content-type"),
+						).
 						KeyID("test-key-rsa-pss").
 						Algorithm("rsa-pss-sha256").
 						Created(1618884473).
@@ -38,7 +46,7 @@ func TestParseSignatureInput(t *testing.T) {
 				AddDefinition(
 					input.NewDefinitionBuilder().
 						Label("sig1").
-						Components(input.MethodComponent, input.TargetURIComponent).
+						Components(component.Method(), component.TargetURI()).
 						KeyID("test-key-rsa-pss").
 						Created(1618884473).
 						MustBuild(),
@@ -46,7 +54,7 @@ func TestParseSignatureInput(t *testing.T) {
 				AddDefinition(
 					input.NewDefinitionBuilder().
 						Label("sig2").
-						Components("content-digest").
+						Components(component.New("content-digest")).
 						KeyID("test-key-ed25519").
 						Created(1618884474).
 						MustBuild(),
@@ -60,7 +68,7 @@ func TestParseSignatureInput(t *testing.T) {
 				AddDefinition(
 					input.NewDefinitionBuilder().
 						Label("sig1").
-						Components(input.MethodComponent).
+						Components(component.Method()).
 						KeyID("test-key").
 						Created(1618884473).
 						Expires(1618888073).
@@ -77,7 +85,7 @@ func TestParseSignatureInput(t *testing.T) {
 				AddDefinition(
 					input.NewDefinitionBuilder().
 						Label("sig1").
-						Components(input.MethodComponent, input.AuthorityComponent).
+						Components(component.Method(), component.Authority()).
 						KeyID("test-key").
 						Algorithm("rsa-pss-sha256").
 						Created(1618884473).
@@ -141,12 +149,16 @@ func TestParseSignatureInput(t *testing.T) {
 				actualParams := actualDef.Parameters()
 
 				// Compare parameter counts (ignoring standard parameters like created, expires, etc.)
-				require.Equal(t, len(expectedParams.Values), len(actualParams.Values), "Number of arbitrary parameters should match")
+				require.Equal(t, len(expectedParams), len(actualParams), "Number of arbitrary parameters should match")
 
 				// Check each arbitrary parameter
-				for key, expectedValue := range expectedParams.Values {
-					actualValue, exists := actualParams.Values[key]
-					require.True(t, exists, "Parameter %s should exist", key)
+				for _, key := range expectedParams {
+					var expectedValue any
+					require.NoError(t, expectedDef.GetParameter(key, &expectedValue), "Should get parameter %s", key)
+
+					var actualValue any
+					require.NoError(t, actualDef.GetParameter(key, &actualValue), "Should get parameter %s", key)
+
 					require.Equal(t, expectedValue, actualValue, "Parameter %s value should match", key)
 				}
 			}
@@ -158,7 +170,7 @@ func TestDefinitionTimeConvenience(t *testing.T) {
 	now := time.Now()
 	def := input.NewDefinitionBuilder().
 		Label("test").
-		Components(input.MethodComponent).
+		Components(component.Method()).
 		KeyID("key1").
 		Algorithm("rsa-pss-sha256").
 		CreatedTime(now).
@@ -177,14 +189,14 @@ func TestDefinitionTimeConvenience(t *testing.T) {
 func TestValueManagement(t *testing.T) {
 	def1 := input.NewDefinitionBuilder().
 		Label("sig1").
-		Components(input.MethodComponent).
+		Components(component.Method()).
 		KeyID("key1").
 		Algorithm("rsa-pss-sha256").
 		MustBuild()
 
 	def2 := input.NewDefinitionBuilder().
 		Label("sig2").
-		Components("content-digest").
+		Components(component.New("content-digest")).
 		KeyID("key2").
 		Algorithm("ed25519").
 		MustBuild()
@@ -289,7 +301,7 @@ func TestMarshalSFVRoundtrip(t *testing.T) {
 func TestDefinitionMarshalSFV(t *testing.T) {
 	def := input.NewDefinitionBuilder().
 		Label("sig1").
-		Components("@method", "@target-uri", "content-digest").
+		Components(component.Method(), component.TargetURI(), component.New("content-digest")).
 		KeyID("test-key-rsa-pss").
 		Algorithm("rsa-pss-sha256").
 		Created(1618884473).

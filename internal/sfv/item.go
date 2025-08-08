@@ -6,31 +6,62 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+func BareItemFrom(value any) (BareItem, error) {
+	switch v := value.(type) {
+	case BareItem:
+		return v, nil
+	case string:
+		return String().Value(v).Build()
+	case bool:
+		return Boolean().Value(v).Build()
+	case int:
+		return Integer().Value(int64(v)).Build()
+	case int64:
+		return Integer().Value(v).Build()
+	case float64:
+		return Decimal().Value(v).Build()
+	case float32:
+		return Decimal().Value(float64(v)).Build()
+	default:
+		return nil, fmt.Errorf("unsupported bare item type %T", v)
+	}
+}
+
 // This is the actual value, and we're only providing this to avoid
 // having to write a lot of boilerplate code for each type.
-type itemValue[T any] struct {
+type uvalue[T any] struct {
 	value T
 }
 
-func (iv *itemValue[T]) SetValue(value T) {
+func (iv *uvalue[T]) SetValue(value T) error {
 	iv.value = value
+	return nil
 }
 
-func (iv itemValue[T]) Value(dst any) error {
+func (iv *uvalue[T]) Value() T {
+	return iv.value
+}
+
+func (iv uvalue[T]) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, iv.value)
 }
 
-type fullItem struct {
-	BareItem
-	params *Parameters
+type fullItem[BT BareItem, UT any] struct {
+	bare    BT
+	valuefn func() UT
+	params  *Parameters
 }
 
-func (fi *fullItem) Parameters() *Parameters {
+func (fi *fullItem[BT, UT]) Parameters() *Parameters {
 	return fi.params
 }
 
-func (item *fullItem) MarshalSFV() ([]byte, error) {
-	bi, err := item.BareItem.MarshalSFV()
+func (fi *fullItem[BT, UT]) Value() UT {
+	return fi.valuefn()
+}
+
+func (item *fullItem[BT, UT]) MarshalSFV() ([]byte, error) {
+	bi, err := item.bare.MarshalSFV()
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling bare item: %w", err)
 	}
@@ -47,23 +78,48 @@ func (item *fullItem) MarshalSFV() ([]byte, error) {
 	return bi, nil
 }
 
+func (item *fullItem[BT, UT]) GetValue(dst any) error {
+	return item.bare.GetValue(dst)
+}
+
+func (item *fullItem[BT, UT]) Type() int {
+	return item.bare.Type()
+}
+
+func (item *fullItem[BT, UT]) With(params *Parameters) Item {
+	return &fullItem[BT, UT]{
+		bare:   item.bare,
+		params: params,
+	}
+}
+
+type CoreItem interface {
+	Marshaler
+	Type() int
+	// GetValue is a method that assigns the underlying value of the item to dst.
+	// It is used to retrieve the value without needing to know the type, or
+	// without having to go through type conversion.
+	//
+	// If you already know the type of the value, you could use the Value() method
+	// instead, which returns the value directly.
+	GetValue(dst any) error
+}
+
 // A BareItem represents a bare item, which is the itemValue plus the item
 // type. A bare item cannot carry parameters. However, it _can_ be upgraded
 // to a full Item by calling With().
 type BareItem interface {
-	Marshaler
+	CoreItem
 
-	Type() int
-	Value(dst any) error
-
-	// Creates a new Item with the given parameters
-	With(*Parameters) Item
+	// ToItem creates a new Item from this bare item
+	ToItem() Item
 }
 
 // Item represents a single item in the SFV (Structured Field Value) format.
 // It is essentially a bare item with parameters
 type Item interface {
-	BareItem
+	CoreItem
 
+	With(*Parameters) Item
 	Parameters() *Parameters
 }

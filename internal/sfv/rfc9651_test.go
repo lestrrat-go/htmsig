@@ -200,7 +200,7 @@ func TestRFC9651Examples(t *testing.T) {
 						item, ok := value.(sfv.Item)
 						require.True(t, ok, "List item %d should be Item, got %T", i, value)
 						var actual interface{}
-						err := item.Value(&actual)
+						err := item.GetValue(&actual)
 						require.NoError(t, err, "Failed to get value from item %d", i)
 						require.Equal(t, expectedValue, actual, "List item %d has wrong value", i)
 					}
@@ -219,7 +219,7 @@ func TestRFC9651Examples(t *testing.T) {
 				// If we have expected item value, validate it
 				if test.expected != nil {
 					var actual interface{}
-					err := item.Value(&actual)
+					err := item.GetValue(&actual)
 					require.NoError(t, err, "Failed to get value from item")
 					require.Equal(t, test.expected, actual, "Item has wrong value")
 				}
@@ -231,13 +231,13 @@ func TestRFC9651Examples(t *testing.T) {
 				// If we have expected dictionary values, validate them
 				if expectedDict, ok := test.expected.(map[string]any); ok {
 					for expectedKey, expectedValue := range expectedDict {
-						actualValue, exists := dict.Get(expectedKey)
-						require.True(t, exists, "Dictionary missing expected key: %s", expectedKey)
+						var actualValue any
+						require.NoError(t, dict.GetValue(expectedKey, &actualValue), "Failed to get value for key %s", expectedKey)
 
 						// For simple items, compare the value directly
 						if item, ok := actualValue.(sfv.Item); ok {
 							var actual interface{}
-							err := item.Value(&actual)
+							err := item.GetValue(&actual)
 							require.NoError(t, err, "Failed to get value from dictionary item %s", expectedKey)
 							require.Equal(t, expectedValue, actual, "Dictionary key %s has wrong value", expectedKey)
 						}
@@ -356,7 +356,7 @@ func TestRFC9651SpecificExamples(t *testing.T) {
 				// Check specific values for non-list inputs
 				if !strings.Contains(test.input, ",") {
 					var actual interface{}
-					err := item.Value(&actual)
+					err := item.GetValue(&actual)
 					require.NoError(t, err, "Failed to get value from item")
 					require.Equal(t, test.expectedValue, actual, "Item has wrong value")
 				}
