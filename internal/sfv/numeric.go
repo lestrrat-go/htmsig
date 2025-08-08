@@ -8,6 +8,7 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type DecimalItem = fullItem[*DecimalBareItem]
 type DecimalBareItem struct {
 	itemValue[float64]
 }
@@ -59,12 +60,13 @@ func (d DecimalBareItem) Value(dst any) error {
 }
 
 func (d *DecimalBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: d,
-		params:   params,
+	return &DecimalItem{
+		bare:   d,
+		params: params,
 	}
 }
 
+type IntegerItem = fullItem[*IntegerBareItem]
 type IntegerBareItem struct {
 	itemValue[int64]
 }
@@ -107,8 +109,8 @@ func (i IntegerBareItem) Value(dst any) error {
 }
 
 func (i *IntegerBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: i,
-		params:   params,
+	return &IntegerItem{
+		bare:   i,
+		params: params,
 	}
 }

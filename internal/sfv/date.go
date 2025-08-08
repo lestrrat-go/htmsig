@@ -7,6 +7,7 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type DateItem = fullItem[*DateBareItem]
 type DateBareItem struct {
 	itemValue[int64]
 }
@@ -50,8 +51,8 @@ func (d DateBareItem) Value(dst any) error {
 }
 
 func (d *DateBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: d,
-		params:   params,
+	return &fullItem[*DateBareItem]{
+		bare:   d,
+		params: params,
 	}
 }

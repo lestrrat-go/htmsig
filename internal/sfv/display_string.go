@@ -7,6 +7,7 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type DisplayStringItem = fullItem[*DisplayStringBareItem]
 type DisplayStringBareItem struct {
 	itemValue[string]
 }
@@ -64,8 +65,8 @@ func (d DisplayStringBareItem) Value(dst any) error {
 }
 
 func (d *DisplayStringBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: d,
-		params:   params,
+	return &DisplayStringItem{
+		bare:   d,
+		params: params,
 	}
 }

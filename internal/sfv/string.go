@@ -6,6 +6,8 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type StringItem = fullItem[*StringBareItem]
+
 // StringBareItem represents a string value in the SFV format.
 type StringBareItem struct {
 	itemValue[string]
@@ -39,8 +41,8 @@ func (s StringBareItem) Value(dst any) error {
 }
 
 func (s *StringBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: s,
-		params:   params,
+	return &StringItem{
+		bare:   s,
+		params: params,
 	}
 }

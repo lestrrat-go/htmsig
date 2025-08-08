@@ -231,8 +231,8 @@ func TestRFC9651Examples(t *testing.T) {
 				// If we have expected dictionary values, validate them
 				if expectedDict, ok := test.expected.(map[string]any); ok {
 					for expectedKey, expectedValue := range expectedDict {
-						actualValue, exists := dict.Get(expectedKey)
-						require.True(t, exists, "Dictionary missing expected key: %s", expectedKey)
+						var actualValue any
+						require.NoError(t, dict.GetValue(expectedKey, &actualValue), "Failed to get value for key %s", expectedKey)
 
 						// For simple items, compare the value directly
 						if item, ok := actualValue.(sfv.Item); ok {

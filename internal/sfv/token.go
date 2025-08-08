@@ -6,6 +6,7 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type TokenItem = fullItem[*TokenBareItem]
 type TokenBareItem struct {
 	itemValue[string]
 }
@@ -48,8 +49,8 @@ func (t TokenBareItem) Value(dst any) error {
 }
 
 func (t *TokenBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: t,
-		params:   params,
+	return &TokenItem{
+		bare:   t,
+		params: params,
 	}
 }

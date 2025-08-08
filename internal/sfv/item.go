@@ -45,17 +45,17 @@ func (iv itemValue[T]) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, iv.value)
 }
 
-type fullItem struct {
-	BareItem
+type fullItem[T BareItem] struct {
+	bare   T
 	params *Parameters
 }
 
-func (fi *fullItem) Parameters() *Parameters {
+func (fi *fullItem[T]) Parameters() *Parameters {
 	return fi.params
 }
 
-func (item *fullItem) MarshalSFV() ([]byte, error) {
-	bi, err := item.BareItem.MarshalSFV()
+func (item *fullItem[T]) MarshalSFV() ([]byte, error) {
+	bi, err := item.bare.MarshalSFV()
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling bare item: %w", err)
 	}
@@ -70,6 +70,21 @@ func (item *fullItem) MarshalSFV() ([]byte, error) {
 	}
 
 	return bi, nil
+}
+
+func (item *fullItem[T]) GetValue(dst any) error {
+	return item.bare.GetValue(dst)
+}
+
+func (item *fullItem[T]) Type() int {
+	return item.bare.Type()
+}
+
+func (item *fullItem[T]) With(params *Parameters) Item {
+	return &fullItem[T]{
+		bare:   item.bare,
+		params: params,
+	}
 }
 
 // A BareItem represents a bare item, which is the itemValue plus the item

@@ -7,6 +7,8 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+type ByteSequenceItem = fullItem[*ByteSequenceBareItem]
+
 // ByteSequenceBareItem represents a bare byte sequence in the SFV format.
 type ByteSequenceBareItem struct {
 	itemValue[[]byte]
@@ -52,8 +54,8 @@ func (b ByteSequenceBareItem) Value(dst any) error {
 }
 
 func (b *ByteSequenceBareItem) With(params *Parameters) Item {
-	return &fullItem{
-		BareItem: b,
-		params:   params,
+	return &ByteSequenceItem{
+		bare:   b,
+		params: params,
 	}
 }
