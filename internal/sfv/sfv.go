@@ -16,26 +16,56 @@ const (
 	maxSFVInteger    = 999999999999999
 )
 
+const (
+	parseModeDefault = 0
+
+	parseModeList = iota // parseModeDefault == parseModelist
+	parseModeDictionary
+	parseModeItem
+)
+
 type parseContext struct {
 	idx   int // current index in the data
 	size  int // size of the data
+	mode  int
 	data  []byte
 	value any // the parsed value, if any
 }
 
 func Parse(data []byte) (any, error) {
+	return parse(data, parseModeDefault)
+}
+
+func parse(data []byte, mode int) (any, error) {
 	var pctx parseContext
-	pctx.init(data)
+	pctx.init(data, mode)
 	if err := pctx.do(); err != nil {
 		return nil, err
 	}
 	return pctx.value, nil
 }
 
-func (pctx *parseContext) init(data []byte) {
+func ParseDictionary(data []byte) (*Dictionary, error) {
+	v, err := parse(data, parseModeDictionary)
+	if err != nil {
+		return nil, err
+	}
+	return v.(*Dictionary), nil
+}
+
+func ParseItem(data []byte) (Item, error) {
+	v, err := parse(data, parseModeItem)
+	if err != nil {
+		return nil, err
+	}
+	return v.(Item), nil
+}
+
+func (pctx *parseContext) init(data []byte, mode int) {
 	pctx.data = data
 	pctx.size = len(data)
 	pctx.idx = 0
+	pctx.mode = mode
 }
 
 func (p *parseContext) eof() bool {
@@ -105,17 +135,36 @@ func (p *parseContext) do() error {
 	var output any
 	var err error
 
-	if p.isDictionary() {
-		// 3. Parse as sf-dictionary
+	switch p.mode {
+	case parseModeDictionary:
 		output, err = p.parseDictionary()
 		if err != nil {
 			return fmt.Errorf("sfv: failed to parse dictionary: %w", err)
 		}
-	} else {
-		// 3. Parse as sf-list (the primary structured field type)
+	case parseModeList:
 		output, err = p.parseList()
 		if err != nil {
 			return fmt.Errorf("sfv: failed to parse list: %w", err)
+		}
+	case parseModeItem:
+		output, err = p.parseItem()
+		if err != nil {
+			return fmt.Errorf("sfv: failed to parse item: %w", err)
+		}
+
+	default:
+		if p.isDictionary() {
+			// 3. Parse as sf-dictionary
+			output, err = p.parseDictionary()
+			if err != nil {
+				return fmt.Errorf("sfv: failed to parse dictionary: %w", err)
+			}
+		} else {
+			// 3. Parse as sf-list (the primary structured field type)
+			output, err = p.parseList()
+			if err != nil {
+				return fmt.Errorf("sfv: failed to parse list: %w", err)
+			}
 		}
 	}
 

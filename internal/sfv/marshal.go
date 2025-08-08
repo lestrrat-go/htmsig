@@ -1,12 +1,74 @@
 package sfv
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
 )
+
+type Encoder struct {
+	parameterSpacing string // " " ---> "component; parameter", "" ---> "component;parameter"
+}
+
+// NewEncoder returns a new encoder with default settings (standard SFV formatting with spaces)
+func NewEncoder() *Encoder {
+	return &Encoder{
+		parameterSpacing: " ", // Standard SFV format
+	}
+}
+
+// SetParameterSpacing sets the spacing used after semicolons in parameters.
+// Use " " for standard SFV formatting, "" for HTTP Message Signature formatting.
+func (enc *Encoder) SetParameterSpacing(spacing string) {
+	enc.parameterSpacing = spacing
+}
+
+// Encode encodes the given value using the encoder's settings.
+func (enc *Encoder) Encode(v any) ([]byte, error) {
+	if v == nil {
+		return nil, nil
+	}
+
+	if marshaler, ok := v.(Marshaler); ok {
+		result, err := marshaler.MarshalSFV()
+		if err != nil {
+			return nil, err
+		}
+		return enc.postProcessParameters(result), nil
+	}
+
+	// Convert to SFV type and marshal
+	sfvValue, err := valueToSFV(v)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use the encoder to marshal the SFV value
+	return enc.Encode(sfvValue)
+}
+
+// postProcessParameters adjusts parameter spacing based on encoder settings
+func (enc *Encoder) postProcessParameters(data []byte) []byte {
+	if enc.parameterSpacing == " " {
+		// Standard format - no changes needed
+		return data
+	}
+	
+	if enc.parameterSpacing == "" {
+		// Remove spaces after semicolons for HTTP Message Signature format
+		return bytes.ReplaceAll(data, []byte("; "), []byte(";"))
+	}
+	
+	// Custom spacing - replace default " " with custom spacing
+	if enc.parameterSpacing != " " {
+		return bytes.ReplaceAll(data, []byte("; "), []byte(";"+enc.parameterSpacing))
+	}
+	
+	return data
+}
 
 type Marshaler interface {
 	MarshalSFV() ([]byte, error)

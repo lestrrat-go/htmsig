@@ -3,6 +3,8 @@ package sfv
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/lestrrat-go/blackmagic"
 )
 
 type Parameters struct {
@@ -29,6 +31,20 @@ func (p *Parameters) Len() int {
 		return len(p.Values)
 	}
 	return len(p.keys)
+}
+
+func (p *Parameters) Keys() []string {
+	ret := make([]string, len(p.keys))
+	copy(ret, p.keys)
+	return ret
+}
+
+func (p *Parameters) Get(key string, dst any) error {
+	value, exists := p.Values[key]
+	if !exists {
+		return fmt.Errorf("parameter %q not found", key)
+	}
+	return blackmagic.AssignIfCompatible(dst, value)
 }
 
 func (p *Parameters) Set(key string, value BareItem) error {

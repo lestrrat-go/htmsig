@@ -15,6 +15,16 @@ type ItemBuilder struct {
 	err   error
 }
 
+func (bb *BareItemBuilder[B, T]) ToItem() *ItemBuilder {
+	if bb.err != nil {
+		return &ItemBuilder{err: bb.err}
+	}
+
+	return &ItemBuilder{
+		value: bb.value.With(NewParameters()),
+	}
+}
+
 func (bb *BareItemBuilder[B, T]) Value(value T) *BareItemBuilder[B, T] {
 	if bb.err != nil {
 		return bb
@@ -73,4 +83,14 @@ func (ib *ItemBuilder) MustBuild() Item {
 		panic(ib.err)
 	}
 	return ib.value
+}
+
+func (ib *ItemBuilder) Parameter(k string, v BareItem) *ItemBuilder {
+	if ib.err != nil {
+		return ib
+	}
+	if err := ib.value.Parameters().Set(k, v); err != nil {
+		ib.err = fmt.Errorf("error setting parameter %q: %w", k, err)
+	}
+	return ib
 }

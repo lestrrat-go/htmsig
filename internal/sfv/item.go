@@ -6,6 +6,25 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
+func BareItemFrom(value any) (BareItem, error) {
+	switch v := value.(type) {
+	case string:
+		return String().Value(v).Build()
+	case bool:
+		return Boolean().Value(v).Build()
+	case int:
+		return Integer().Value(int64(v)).Build()
+	case int64:
+		return Integer().Value(v).Build()
+	case float64:
+		return Decimal().Value(v).Build()
+	case float32:
+		return Decimal().Value(float64(v)).Build()
+	default:
+		return nil, fmt.Errorf("unsupported bare item type %T", v)
+	}
+}
+
 // This is the actual value, and we're only providing this to avoid
 // having to write a lot of boilerplate code for each type.
 type itemValue[T any] struct {
@@ -16,7 +35,11 @@ func (iv *itemValue[T]) SetValue(value T) {
 	iv.value = value
 }
 
-func (iv itemValue[T]) Value(dst any) error {
+func (iv *itemValue[T]) Value() T {
+	return iv.value
+}
+
+func (iv itemValue[T]) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, iv.value)
 }
 
@@ -54,7 +77,14 @@ type BareItem interface {
 	Marshaler
 
 	Type() int
-	Value(dst any) error
+
+	// GetValue is a method that assigns the underlying value of the item to dst.
+	// It is used to retrieve the value without needing to know the type, or
+	// without having to go through type conversion.
+	//
+	// If you already know the type of the value, you could use the Value() method
+	// instead, which returns the value directly.
+	GetValue(dst any) error
 
 	// Creates a new Item with the given parameters
 	With(*Parameters) Item

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
+	"github.com/lestrrat-go/htmsig/internal/common"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -15,8 +15,8 @@ import (
 // byteSlice, err := sigbase.Request(req).Components(...strings).Build()
 type RequestBuilder struct {
 	req        *http.Request
-	components []string
-	
+	components []common.Component
+
 	// Signature parameters
 	created   *int64
 	expires   *int64
@@ -25,18 +25,21 @@ type RequestBuilder struct {
 	nonce     *string
 	tag       *string
 	params    map[string]string
-	
+
 	err error
 }
 
 func Request(req *http.Request) *RequestBuilder {
+	if req == nil {
+		return &RequestBuilder{err: fmt.Errorf("HTTP request is required")}
+	}
 	return &RequestBuilder{
 		req: req,
 	}
 }
 
 // Components sets the list of components to include in the signature base
-func (rb *RequestBuilder) Components(components ...string) *RequestBuilder {
+func (rb *RequestBuilder) Components(components ...common.Component) *RequestBuilder {
 	if rb.err != nil {
 		return rb
 	}
@@ -110,48 +113,48 @@ func (rb *RequestBuilder) Parameter(key, value string) *RequestBuilder {
 	return rb
 }
 
+type ComponentResolver interface {
+	Resolve(name string) (string, error)
+}
+
 // Build constructs the signature base according to RFC 9421 Section 2.5
 func (rb *RequestBuilder) Build() ([]byte, error) {
 	if rb.err != nil {
 		return nil, rb.err
 	}
 
-	if rb.req == nil {
-		return nil, fmt.Errorf("HTTP request is required")
-	}
-
-	// Use explicit components
-	components := rb.components
-
-	if len(components) == 0 {
+	if len(rb.components) == 0 {
 		return nil, fmt.Errorf("at least one component is required")
 	}
 
+	var list sfv.List
+	for _, comp := range rb.components {
+		sfvcomp, err := comp.SFV()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert component %q to SFV: %w", comp.Name(), err)
+		}
+		list.Add(sfvcomp)
+	}
+
 	var output bytes.Buffer
-	seenComponents := make(map[string]bool)
+	seenComponents := make(map[string]struct{})
 
 	// Process each covered component
-	for _, componentID := range components {
+	for _, comp := range rb.components {
 		// Check for duplicates
-		if seenComponents[componentID] {
-			return nil, fmt.Errorf("duplicate component identifier: %s", componentID)
+		if _, ok := seenComponents[comp.Name()]; ok {
+			return nil, fmt.Errorf("duplicate component identifier: %s", comp.Name())
 		}
-		seenComponents[componentID] = true
-
-		// Parse component identifier and parameters
-		componentName, params, err := rb.parseComponentIdentifier(componentID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse component identifier %q: %w", componentID, err)
-		}
+		seenComponents[comp.Name()] = struct{}{}
 
 		// Get component value
-		value, err := rb.getComponentValue(componentName, params)
+		value, err := rb.getComponentValue(comp)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get component value for %q: %w", componentID, err)
+			return nil, fmt.Errorf("failed to get component value for %q: %w", comp.Name(), err)
 		}
 
 		// Append to signature base: "component-name": value
-		fmt.Fprintf(&output, "%q: %s\n", componentID, value)
+		fmt.Fprintf(&output, "%q: %s\n", comp.Name(), value)
 	}
 
 	// Add signature parameters line if we have signature parameters
@@ -161,210 +164,57 @@ func (rb *RequestBuilder) Build() ([]byte, error) {
 			return nil, fmt.Errorf("failed to build signature params line: %w", err)
 		}
 		output.WriteString(sigParamsLine)
-	} else {
-		// Remove trailing newline if no signature params
-		result := output.Bytes()
-		if len(result) > 0 && result[len(result)-1] == '\n' {
-			result = result[:len(result)-1]
-		}
-		return result, nil
+		return output.Bytes(), nil
 	}
 
-	return output.Bytes(), nil
+	// Remove trailing newline if no signature params
+	result := output.Bytes()
+	if len(result) > 0 && result[len(result)-1] == '\n' {
+		result = result[:len(result)-1]
+	}
+	return result, nil
 }
 
-// parseComponentIdentifier parses a component identifier according to RFC 9421
-func (rb *RequestBuilder) parseComponentIdentifier(componentID string) (string, map[string]string, error) {
-	// Component identifiers are in the format: "component-name" or "component-name";param=value
-	// For simple cases without parameters, just return the component name directly
-	if !strings.Contains(componentID, ";") {
-		// Simple component identifier without parameters
-		componentName := strings.Trim(componentID, "\"")
-		return componentName, make(map[string]string), nil
-	}
-
-	// For components with parameters, parse manually without SFV
-	// Format: "component-name";param=value;param2=value2
-	parts := strings.Split(componentID, ";")
-	if len(parts) < 2 {
-		return "", nil, fmt.Errorf("component identifier with ';' must have parameters")
-	}
-
-	// First part is component name (remove quotes if present)
-	componentName := strings.Trim(parts[0], "\"")
-	params := make(map[string]string)
-
-	// Parse parameters
-	for i := 1; i < len(parts); i++ {
-		paramStr := strings.TrimSpace(parts[i])
-		if paramStr == "" {
-			continue
-		}
-
-		// Split on '=' to get key=value
-		if eqIdx := strings.Index(paramStr, "="); eqIdx > 0 {
-			key := paramStr[:eqIdx]
-			value := strings.Trim(paramStr[eqIdx+1:], "\"")
-			params[key] = value
-		} else {
-			// Parameter without value (boolean true)
-			params[paramStr] = "1"
-		}
-	}
-
-	return componentName, params, nil
-}
-
-// getComponentValue retrieves the component value based on the component name
-func (rb *RequestBuilder) getComponentValue(componentName string, params map[string]string) (string, error) {
+// getComponentValue retrieves the component value based on the component
+func (rb *RequestBuilder) getComponentValue(component common.Component) (string, error) {
 	// Handle derived components (start with @)
-	if strings.HasPrefix(componentName, "@") {
-		return rb.getDerivedComponentValue(componentName, params)
+	if strings.HasPrefix(component.Name(), "@") {
+		return ResolveRequestComponent(component, rb.req)
 	}
 
 	// Handle HTTP header fields
-	return rb.getHeaderFieldValue(componentName, params)
-}
-
-// getDerivedComponentValue handles derived components like @method, @target-uri, etc.
-func (rb *RequestBuilder) getDerivedComponentValue(componentName string, params map[string]string) (string, error) {
-	switch componentName {
-	case "@method":
-		return strings.ToUpper(rb.req.Method), nil
-
-	case "@target-uri":
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		return rb.req.URL.String(), nil
-
-	case "@authority":
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		if rb.req.URL.Host != "" {
-			return rb.req.URL.Host, nil
-		}
-		// Fall back to Host header if URL.Host is empty
-		if host := rb.req.Header.Get("Host"); host != "" {
-			return host, nil
-		}
-		return "", fmt.Errorf("no authority found")
-
-	case "@scheme":
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		scheme := rb.req.URL.Scheme
-		if scheme == "" {
-			// Default scheme based on TLS
-			if rb.req.TLS != nil {
-				scheme = "https"
-			} else {
-				scheme = "http"
-			}
-		}
-		return strings.ToLower(scheme), nil
-
-	case "@request-target":
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-
-		// Handle different request target forms
-		if rb.req.Method == "OPTIONS" && rb.req.URL.Path == "*" {
-			return "*", nil
-		}
-
-		path := rb.req.URL.Path
-		if path == "" {
-			path = "/"
-		}
-
-		if rb.req.URL.RawQuery != "" {
-			return path + "?" + rb.req.URL.RawQuery, nil
-		}
-		return path, nil
-
-	case "@path":
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		path := rb.req.URL.Path
-		if path == "" {
-			path = "/"
-		}
-		return path, nil
-
-	case "@query":
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		if rb.req.URL.RawQuery == "" {
-			return "", fmt.Errorf("query component not found")
-		}
-		return "?" + rb.req.URL.RawQuery, nil
-
-	case "@query-param":
-		paramName, ok := params["name"]
-		if !ok {
-			return "", fmt.Errorf("@query-param requires name parameter")
-		}
-
-		if rb.req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-
-		values, err := url.ParseQuery(rb.req.URL.RawQuery)
-		if err != nil {
-			return "", fmt.Errorf("failed to parse query parameters: %w", err)
-		}
-
-		paramValues, exists := values[paramName]
-		if !exists {
-			return "", fmt.Errorf("query parameter %q not found", paramName)
-		}
-
-		// Return the first value (RFC 9421 doesn't specify multiple values handling)
-		if len(paramValues) > 0 {
-			return paramValues[0], nil
-		}
-		return "", nil
-
-	default:
-		return "", fmt.Errorf("unknown derived component: %s", componentName)
-	}
+	return rb.getHeaderFieldValue(component)
 }
 
 // getHeaderFieldValue handles HTTP header fields according to RFC 9421 Section 2.1
-func (rb *RequestBuilder) getHeaderFieldValue(fieldName string, params map[string]string) (string, error) {
+func (rb *RequestBuilder) getHeaderFieldValue(component common.Component) (string, error) {
 	// Get header values (case-insensitive)
-	values := rb.req.Header.Values(fieldName)
+	values := rb.req.Header.Values(component.Name())
 	if len(values) == 0 {
-		return "", fmt.Errorf("header field %q not found", fieldName)
+		return "", fmt.Errorf("header field %q not found", component.Name)
 	}
 
 	// Handle bs parameter (byte sequence)
-	if _, hasBS := params["bs"]; hasBS {
-		// For bs parameter, we wrap the field value 
+	if component.HasParameter("bs") {
+		// For bs parameter, we wrap the field value
 		// The field must contain only a single value for bs to work
 		if len(values) > 1 {
-			return "", fmt.Errorf("bs parameter requires single header value for field %q", fieldName)
+			return "", fmt.Errorf("bs parameter requires single header value for field %q", component.Name)
 		}
 		// Return the value as-is (it should already be properly encoded)
 		return values[0], nil
 	}
 
 	// Handle sf parameter (structured field)
-	if _, hasSF := params["sf"]; hasSF {
+	if component.HasParameter("sf") {
 		// For sf parameter, structured field serialization must be handled by caller
-		return "", fmt.Errorf("structured field (sf) parameter processing requires SFV access from caller")
+		return "", fmt.Errorf("cannot retrieve structured field value for header %q with sf parameter", component.Name)
 	}
 
 	// Handle key parameter for Dictionary fields
-	if keyName, hasKey := params["key"]; hasKey {
-		// For key parameter, dictionary field processing must be handled by caller
-		return "", fmt.Errorf("dictionary key parameter processing requires SFV access from caller for key %q", keyName)
+	var keyName string
+	if err := component.GetParameter("key", &keyName); err != nil {
+		return "", fmt.Errorf("missing 'key' parameter for dictionary field %q: %w", component.Name(), err)
 	}
 
 	// Default behavior: concatenate multiple instances with ", " per RFC 9421 Section 2.1.1
@@ -379,13 +229,12 @@ func (rb *RequestBuilder) getHeaderFieldValue(fieldName string, params map[strin
 	}
 
 	if len(fieldValues) == 0 {
-		return "", fmt.Errorf("header field %q has only empty values", fieldName)
+		return "", fmt.Errorf("header field %q has only empty values", component.Name)
 	}
 
 	// Join with ", " as per RFC 9421
 	return strings.Join(fieldValues, ", "), nil
 }
-
 
 // hasSignatureParams checks if signature parameters are set
 func (rb *RequestBuilder) hasSignatureParams() bool {
@@ -399,11 +248,11 @@ func (rb *RequestBuilder) buildSignatureParamsLine() (string, error) {
 
 	// Add each component as a string item to the inner list
 	for _, comp := range rb.components {
-		stringItem, err := sfv.String().Value(comp).Build()
+		sfvitem, err := comp.SFV()
 		if err != nil {
-			return "", fmt.Errorf("failed to create string item for component %q: %w", comp, err)
+			return "", fmt.Errorf("failed to convert component %q to SFV: %w", comp.Name(), err)
 		}
-		builder.Add(stringItem)
+		builder.Add(sfvitem)
 	}
 
 	// Add standard parameters
@@ -475,17 +324,14 @@ func (rb *RequestBuilder) buildSignatureParamsLine() (string, error) {
 		return "", fmt.Errorf("failed to build signature params inner list: %w", err)
 	}
 
-	// Marshal the inner list
-	innerListBytes, err := innerList.MarshalSFV()
+	// Marshal the inner list using HTTP Message Signature formatting (no spaces after semicolons)
+	encoder := sfv.NewEncoder()
+	encoder.SetParameterSpacing("") // HTTP Message Signature format
+	innerListBytes, err := encoder.Encode(innerList)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal signature params inner list: %w", err)
 	}
 
 	// Build the final line: "@signature-params": (components);params
 	return fmt.Sprintf("\"@signature-params\": %s", string(innerListBytes)), nil
-}
-
-// GetSignatureParams returns the raw signature parameter data for SFV serialization
-func (rb *RequestBuilder) GetSignatureParams() (components []string, created *int64, expires *int64, keyid, algorithm string, nonce, tag *string, params map[string]string) {
-	return rb.components, rb.created, rb.expires, rb.keyid, rb.algorithm, rb.nonce, rb.tag, rb.params
 }
