@@ -3,6 +3,7 @@ package input
 import (
 	"fmt"
 
+	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -80,15 +81,9 @@ func (v *Value) Len() int {
 
 func Parse(data []byte) (*Value, error) {
 	// Parse the Signature-Input header field using sfv package
-	result, err := sfv.Parse(data)
+	dict, err := sfv.ParseDictionary(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Signature-Input header: %w", err)
-	}
-
-	// Signature-Input must be a Dictionary
-	dict, ok := result.(*sfv.Dictionary)
-	if !ok {
-		return nil, fmt.Errorf("Signature-Input must be a Dictionary, got %T", result)
 	}
 
 	// Create Value and extract all signature definitions
@@ -96,30 +91,24 @@ func Parse(data []byte) (*Value, error) {
 
 	// Iterate through dictionary keys (signature labels)
 	for _, key := range dict.Keys() {
-		value, exists := dict.Get(key)
-		if !exists {
+		var list sfv.InnerList
+		if err := dict.GetValue(key, &list); err != nil {
 			continue // Should not happen, but be safe
 		}
 
-		// Each signature must be an InnerList
-		innerList, ok := value.(*sfv.InnerList)
-		if !ok {
-			return nil, fmt.Errorf("signature %q must be an InnerList, got %T", key, value)
-		}
-
 		// Extract components from InnerList
-		components := make([]string, innerList.Len())
-		for i := 0; i < innerList.Len(); i++ {
-			item, ok := innerList.Get(i)
+		components := make([]component.Identifier, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			item, ok := list.Get(i)
 			if !ok {
 				return nil, fmt.Errorf("failed to get component %d from signature %q", i, key)
 			}
 
-			var component string
-			if err := item.GetValue(&component); err != nil {
-				return nil, fmt.Errorf("failed to extract component %d from signature %q: %w", i, key, err)
+			comp, err := component.FromItem(item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert component %d in signature %q: %w", i, key, err)
 			}
-			components[i] = component
+			components[i] = comp
 		}
 
 		// Create definition builder with label and components
@@ -128,16 +117,12 @@ func Parse(data []byte) (*Value, error) {
 			Components(components...)
 
 		// Extract parameters from InnerList
-		params := innerList.Parameters()
+		params := list.Parameters()
 		if params != nil {
 			// Extract standard parameters
-			if created, exists := params.Values["created"]; exists {
-				if created.Type() == sfv.IntegerType {
-					var timestamp int64
-					if err := created.GetValue(&timestamp); err == nil {
-						defBuilder.Created(timestamp)
-					}
-				}
+			var created sfv.IntegerItem
+			if err := params.Get("created", &created); err == nil {
+				defBuilder.Created(created.Value())
 			}
 
 			if expires, exists := params.Values["expires"]; exists {

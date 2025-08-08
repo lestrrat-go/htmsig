@@ -2,7 +2,7 @@ package sfv
 
 import "github.com/lestrrat-go/blackmagic"
 
-type BooleanItem = fullItem[BooleanBareItem]
+type BooleanItem = fullItem[BooleanBareItem, bool]
 
 // BooleanBareItem represents a bare boolean value in the SFV format.
 type BooleanBareItem bool
@@ -61,7 +61,7 @@ func (b BooleanBareItem) MarshalSFV() ([]byte, error) {
 
 func (b BooleanBareItem) With(params *Parameters) Item {
 	return &BooleanItem{
-		bare:   b,
-		params: params,
+		BareItem: b,
+		params:   params,
 	}
 }

@@ -29,32 +29,47 @@ func BareItemFrom(value any) (BareItem, error) {
 
 // This is the actual value, and we're only providing this to avoid
 // having to write a lot of boilerplate code for each type.
-type itemValue[T any] struct {
+type uvalue[T any] struct {
 	value T
 }
 
-func (iv *itemValue[T]) SetValue(value T) {
+func (iv *uvalue[T]) SetValue(value T) error {
 	iv.value = value
+	return nil
 }
 
-func (iv *itemValue[T]) Value() T {
+func (iv *uvalue[T]) Value() T {
 	return iv.value
 }
 
-func (iv itemValue[T]) GetValue(dst any) error {
+func (iv uvalue[T]) GetValue(dst any) error {
 	return blackmagic.AssignIfCompatible(dst, iv.value)
 }
 
-type fullItem[T BareItem] struct {
-	bare   T
-	params *Parameters
+type bareItem[UT uvalue[T], T any] interface {
+	Marshaler
+
+	Type() int
+	GetValue(dst any) error
+	Value() T
+	With(*Parameters) Item
 }
 
-func (fi *fullItem[T]) Parameters() *Parameters {
+type fullItem[BT BareItem, UT any] struct {
+	bare    BT
+	valuefn func() UT
+	params  *Parameters
+}
+
+func (fi *fullItem[BT, UT]) Parameters() *Parameters {
 	return fi.params
 }
 
-func (item *fullItem[T]) MarshalSFV() ([]byte, error) {
+func (fi *fullItem[BT, UT]) Value() UT {
+	return fi.valuefn()
+}
+
+func (item *fullItem[BT, UT]) MarshalSFV() ([]byte, error) {
 	bi, err := item.bare.MarshalSFV()
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling bare item: %w", err)
@@ -72,16 +87,16 @@ func (item *fullItem[T]) MarshalSFV() ([]byte, error) {
 	return bi, nil
 }
 
-func (item *fullItem[T]) GetValue(dst any) error {
+func (item *fullItem[BT, UT]) GetValue(dst any) error {
 	return item.bare.GetValue(dst)
 }
 
-func (item *fullItem[T]) Type() int {
+func (item *fullItem[BT, UT]) Type() int {
 	return item.bare.Type()
 }
 
-func (item *fullItem[T]) With(params *Parameters) Item {
-	return &fullItem[T]{
+func (item *fullItem[BT, UT]) With(params *Parameters) Item {
+	return &fullItem[BT, UT]{
 		bare:   item.bare,
 		params: params,
 	}

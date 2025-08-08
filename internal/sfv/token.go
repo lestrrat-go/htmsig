@@ -8,7 +8,7 @@ import (
 
 type TokenItem = fullItem[*TokenBareItem]
 type TokenBareItem struct {
-	itemValue[string]
+	uvalue[string]
 }
 
 // Token creates a new TokenBareItem builder for you to construct a token item with.

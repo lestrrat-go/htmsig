@@ -9,7 +9,7 @@ import (
 
 type DisplayStringItem = fullItem[*DisplayStringBareItem]
 type DisplayStringBareItem struct {
-	itemValue[string]
+	uvalue[string]
 }
 
 // DisplayString creates a new DisplayStringBareItem builder for you to construct a display string item with.

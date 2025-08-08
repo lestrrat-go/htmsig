@@ -11,7 +11,7 @@ type ByteSequenceItem = fullItem[*ByteSequenceBareItem]
 
 // ByteSequenceBareItem represents a bare byte sequence in the SFV format.
 type ByteSequenceBareItem struct {
-	itemValue[[]byte]
+	uvalue[[]byte]
 }
 
 // ByteSequence creates a new ByteSequenceBareItem builder for you to construct a byte sequence item with.

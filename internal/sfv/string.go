@@ -10,7 +10,7 @@ type StringItem = fullItem[*StringBareItem]
 
 // StringBareItem represents a string value in the SFV format.
 type StringBareItem struct {
-	itemValue[string]
+	uvalue[string]
 }
 
 // String creates a new StringBareItem builder for you to construct a string item with.

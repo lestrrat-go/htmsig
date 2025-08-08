@@ -8,10 +8,8 @@ import (
 	"github.com/lestrrat-go/blackmagic"
 )
 
-type DecimalItem = fullItem[*DecimalBareItem]
-type DecimalBareItem struct {
-	itemValue[float64]
-}
+type DecimalItem = fullItem[*DecimalBareItem, float64]
+type DecimalBareItem = bareItem[uvalue[float64], float64]
 
 // Decimal creates a new DecimalBareItem builder for you to construct a decimal item with.
 func Decimal() *BareItemBuilder[*DecimalBareItem, float64] {
@@ -66,9 +64,9 @@ func (d *DecimalBareItem) With(params *Parameters) Item {
 	}
 }
 
-type IntegerItem = fullItem[*IntegerBareItem]
+type IntegerItem = fullItem[*IntegerBareItem, int64]
 type IntegerBareItem struct {
-	itemValue[int64]
+	uvalue[int64]
 }
 
 // Integer creates a new IntegerBareItem builder for you to construct an integer item with.

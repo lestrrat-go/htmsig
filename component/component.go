@@ -109,6 +109,10 @@ func Parse(input []byte) (Identifier, error) {
 		return Identifier{}, fmt.Errorf("failed to parse SFV input: %w", err)
 	}
 
+	return FromItem(item)
+}
+
+func FromItem(item sfv.Item) (Identifier, error) {
 	// Convert the parsed item to an Identifier
 	var name string
 	if err := item.GetValue(&name); err != nil {

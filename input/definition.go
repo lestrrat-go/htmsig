@@ -1,11 +1,11 @@
 package input
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
 	"github.com/lestrrat-go/blackmagic"
+	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/internal/sfv"
 )
 
@@ -21,10 +21,10 @@ import (
 // information about the signature.
 type Definition struct {
 	// Required fields
-	label      string   // Signature label
-	components []string // List of covered components
-	keyid      string   // Key identifier
-	algorithm  string   // Signature algorithm
+	label      string                 // Signature label
+	components []component.Identifier // List of covered components
+	keyid      string                 // Key identifier
+	algorithm  string                 // Signature algorithm
 
 	// Optional signature parameters from RFC 9421 Section 2.3
 	created *int64  // Creation time as UNIX timestamp
@@ -56,9 +56,14 @@ func (b *DefinitionBuilder) Label(label string) *DefinitionBuilder {
 	return b
 }
 
-// Components sets the covered components
-func (b *DefinitionBuilder) Components(components ...string) *DefinitionBuilder {
-	b.def.components = components
+func (b *DefinitionBuilder) ResetComponents() *DefinitionBuilder {
+	b.def.components = b.def.components[:0]
+	return b
+}
+
+// Components adds the covered components.
+func (b *DefinitionBuilder) Components(components ...component.Identifier) *DefinitionBuilder {
+	b.def.components = append(b.def.components, components...)
 	return b
 }
 
@@ -157,14 +162,8 @@ func (d *Definition) SetLabel(label string) *Definition {
 }
 
 // Components returns the list of covered components
-func (d *Definition) Components() []string {
+func (d *Definition) Components() []component.Identifier {
 	return d.components
-}
-
-// SetComponents sets the list of covered components
-func (d *Definition) SetComponents(components []string) *Definition {
-	d.components = components
-	return d
 }
 
 // KeyID returns the key identifier
@@ -294,8 +293,24 @@ func (d *Definition) SetExpiresTime(t time.Time) *Definition {
 // MarshalSFV implements the sfv.Marshaler interface for Definition
 // A Definition marshals to an InnerList with components and parameters
 func (d *Definition) MarshalSFV() ([]byte, error) {
-	// Create parameters
-	params := sfv.NewParameters()
+	list, err := d.SFV()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert definition into sfv: %w", err)
+	}
+
+	return list.MarshalSFV()
+}
+
+func (d *Definition) SFV() (*sfv.InnerList, error) {
+	// Marshal as InnerList manually
+	listb := sfv.NewInnerListBuilder()
+	for _, comp := range d.components {
+		sfvc, err := comp.SFV()
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert component %q to SFV: %w", comp, err)
+		}
+		listb.Add(sfvc)
+	}
 
 	// Add standard parameters
 	if d.created != nil {
@@ -303,7 +318,7 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create created parameter: %w", err)
 		}
-		params.Set("created", created)
+		listb.Parameter("created", created)
 	}
 
 	if d.expires != nil {
@@ -311,7 +326,7 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create expires parameter: %w", err)
 		}
-		params.Set("expires", expires)
+		listb.Parameter("expires", expires)
 	}
 
 	if d.keyid != "" {
@@ -319,7 +334,7 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create keyid parameter: %w", err)
 		}
-		params.Set("keyid", kid)
+		listb.Parameter("keyid", kid)
 	}
 
 	if d.algorithm != "" {
@@ -327,7 +342,7 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create algorithm parameter: %w", err)
 		}
-		params.Set("alg", alg)
+		listb.Parameter("alg", alg)
 	}
 
 	if d.nonce != nil {
@@ -335,7 +350,7 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create nonce parameter: %w", err)
 		}
-		params.Set("nonce", nonce)
+		listb.Parameter("nonce", nonce)
 	}
 
 	if d.tag != nil {
@@ -343,7 +358,7 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create tag parameter: %w", err)
 		}
-		params.Set("tag", tag)
+		listb.Parameter("tag", tag)
 	}
 
 	// Add additional parameters
@@ -353,36 +368,9 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert parameter %q: %w", key, err)
 			}
-			params.Set(key, bi)
-
+			listb.Parameter(key, bi)
 		}
 	}
 
-	// Marshal as InnerList manually
-	var buf bytes.Buffer
-	buf.WriteByte('(')
-
-	for i, component := range d.components {
-		if i > 0 {
-			buf.WriteByte(' ')
-		}
-		componentBytes, err := sfv.String().Value(component).MustBuild().MarshalSFV()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal component %q: %w", component, err)
-		}
-		buf.Write(componentBytes)
-	}
-
-	buf.WriteByte(')')
-
-	// Add parameters if any exist
-	if len(params.Keys()) > 0 {
-		paramBytes, err := params.MarshalSFV()
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal parameters: %w", err)
-		}
-		buf.Write(paramBytes)
-	}
-
-	return buf.Bytes(), nil
+	return listb.Build()
 }
