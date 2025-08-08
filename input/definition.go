@@ -132,9 +132,7 @@ func (b *DefinitionBuilder) Build() (*Definition, error) {
 	if len(b.def.components) == 0 {
 		return nil, fmt.Errorf("at least one component is required")
 	}
-	if b.def.keyid == "" {
-		return nil, fmt.Errorf("keyid is required")
-	}
+	// Note: keyid is optional - it's only required when using KeyResolver
 	// Note: algorithm is optional per RFC 9421 Section 3.2 step 6.2-6.4
 	// It can be determined from key material, configuration, or the alg parameter
 

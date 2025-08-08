@@ -119,66 +119,84 @@ func Parse(data []byte) (*Value, error) {
 		// Extract parameters from InnerList
 		params := list.Parameters()
 		if params != nil {
-			// Extract standard parameters
-			var created sfv.IntegerItem
+			// Extract standard parameters using params.Get with correct SFV types
+			var created *sfv.IntegerBareItem
 			if err := params.Get("created", &created); err == nil {
 				defBuilder.Created(created.Value())
 			}
 
-			if expires, exists := params.Values["expires"]; exists {
-				if expires.Type() == sfv.IntegerType {
-					var timestamp int64
-					if err := expires.GetValue(&timestamp); err == nil {
-						defBuilder.Expires(timestamp)
-					}
-				}
+			var expires *sfv.IntegerBareItem
+			if err := params.Get("expires", &expires); err == nil {
+				defBuilder.Expires(expires.Value())
 			}
 
-			if keyid, exists := params.Values["keyid"]; exists {
-				if keyid.Type() == sfv.StringType {
-					var keyID string
-					if err := keyid.GetValue(&keyID); err == nil {
-						defBuilder.KeyID(keyID)
-					}
-				}
+			var keyid *sfv.StringBareItem
+			if err := params.Get("keyid", &keyid); err == nil {
+				defBuilder.KeyID(keyid.Value())
 			}
 
-			if alg, exists := params.Values["alg"]; exists {
-				if alg.Type() == sfv.StringType {
-					var algorithm string
-					if err := alg.GetValue(&algorithm); err == nil {
-						defBuilder.Algorithm(algorithm)
-					}
-				}
+			var alg *sfv.StringBareItem
+			if err := params.Get("alg", &alg); err == nil {
+				defBuilder.Algorithm(alg.Value())
 			}
 
-			if nonce, exists := params.Values["nonce"]; exists {
-				if nonce.Type() == sfv.StringType {
-					var nonceVal string
-					if err := nonce.GetValue(&nonceVal); err == nil {
-						defBuilder.Nonce(nonceVal)
-					}
-				}
+			var nonce *sfv.StringBareItem
+			if err := params.Get("nonce", &nonce); err == nil {
+				defBuilder.Nonce(nonce.Value())
 			}
 
-			if tag, exists := params.Values["tag"]; exists {
-				if tag.Type() == sfv.StringType {
-					var tagVal string
-					if err := tag.GetValue(&tagVal); err == nil {
-						defBuilder.Tag(tagVal)
-					}
-				}
+			var tag *sfv.StringBareItem
+			if err := params.Get("tag", &tag); err == nil {
+				defBuilder.Tag(tag.Value())
 			}
 
-			// Handle additional parameters
-			for paramKey, paramValue := range params.Values {
+			// Handle arbitrary parameters by iterating through all keys
+			for _, paramKey := range params.Keys() {
 				switch paramKey {
 				case "created", "expires", "keyid", "alg", "nonce", "tag":
 					// Already handled above
 					continue
 				default:
-					// Additional parameter - store as-is
-					defBuilder.Parameter(paramKey, paramValue)
+					// Arbitrary parameter - get the BareItem and extract its native value
+					var paramValue sfv.BareItem
+					if err := params.Get(paramKey, &paramValue); err == nil {
+						// Extract native Go value based on SFV type
+						switch paramValue.Type() {
+						case sfv.IntegerType:
+							var intVal int64
+							if err := paramValue.GetValue(&intVal); err == nil {
+								defBuilder.Parameter(paramKey, intVal)
+							}
+						case sfv.StringType:
+							var strVal string
+							if err := paramValue.GetValue(&strVal); err == nil {
+								defBuilder.Parameter(paramKey, strVal)
+							}
+						case sfv.BooleanType:
+							var boolVal bool
+							if err := paramValue.GetValue(&boolVal); err == nil {
+								defBuilder.Parameter(paramKey, boolVal)
+							}
+						case sfv.DecimalType:
+							var decVal float64
+							if err := paramValue.GetValue(&decVal); err == nil {
+								defBuilder.Parameter(paramKey, decVal)
+							}
+						case sfv.ByteSequenceType:
+							var bytesVal []byte
+							if err := paramValue.GetValue(&bytesVal); err == nil {
+								defBuilder.Parameter(paramKey, bytesVal)
+							}
+						case sfv.TokenType:
+							var tokenVal string
+							if err := paramValue.GetValue(&tokenVal); err == nil {
+								defBuilder.Parameter(paramKey, tokenVal)
+							}
+						default:
+							// For unknown types, store the BareItem as-is
+							defBuilder.Parameter(paramKey, paramValue)
+						}
+					}
 				}
 			}
 		}

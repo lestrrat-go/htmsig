@@ -3,6 +3,7 @@ package sfv
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 	"strings"
@@ -10,12 +11,14 @@ import (
 )
 
 type Encoder struct {
+	dst              io.Writer
 	parameterSpacing string // " " ---> "component; parameter", "" ---> "component;parameter"
 }
 
 // NewEncoder returns a new encoder with default settings (standard SFV formatting with spaces)
-func NewEncoder() *Encoder {
+func NewEncoder(dst io.Writer) *Encoder {
 	return &Encoder{
+		dst:              dst,
 		parameterSpacing: " ", // Standard SFV format
 	}
 }
@@ -27,27 +30,40 @@ func (enc *Encoder) SetParameterSpacing(spacing string) {
 }
 
 // Encode encodes the given value using the encoder's settings.
-func (enc *Encoder) Encode(v any) ([]byte, error) {
+func (enc *Encoder) Encode(v any) error {
 	if v == nil {
-		return nil, nil
+		return fmt.Errorf(`cannot encode nil value`)
 	}
 
 	if marshaler, ok := v.(Marshaler); ok {
 		result, err := marshaler.MarshalSFV()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return enc.postProcessParameters(result), nil
+		processed := enc.postProcessParameters(result)
+		if _, err = enc.dst.Write(processed); err != nil {
+			return fmt.Errorf("failed to write encoded data: %w", err)
+		}
 	}
 
 	// Convert to SFV type and marshal
 	sfvValue, err := valueToSFV(v)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to convert value to SFV: %w", err)
 	}
 
-	// Use the encoder to marshal the SFV value
-	return enc.Encode(sfvValue)
+	// Use the marshaler interface directly to avoid recursion
+	if marshaler, ok := sfvValue.(Marshaler); ok {
+		data, err := marshaler.MarshalSFV()
+		if err != nil {
+			return err
+		}
+		processed := enc.postProcessParameters(data)
+		_, err = enc.dst.Write(processed)
+		return err
+	}
+	
+	return fmt.Errorf("SFV value does not implement Marshaler interface")
 }
 
 // postProcessParameters adjusts parameter spacing based on encoder settings
@@ -89,7 +105,11 @@ func Marshal(v any) ([]byte, error) {
 		return nil, err
 	}
 
-	return Marshal(sfvValue)
+	if marshaler, ok := sfvValue.(Marshaler); ok {
+		return marshaler.MarshalSFV()
+	}
+	
+	return nil, fmt.Errorf("SFV value does not implement Marshaler interface")
 }
 
 // valueToSFV converts a Go value to an SFV type (Item, List, Dictionary, or InnerList)

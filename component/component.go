@@ -1,6 +1,7 @@
 package component
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/lestrrat-go/blackmagic"
@@ -97,9 +98,14 @@ func (c *Identifier) MarshalSFV() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SFV item: %w", err)
 	}
-	enc := sfv.NewEncoder()
+
+	var buf bytes.Buffer
+	enc := sfv.NewEncoder(&buf)
 	enc.SetParameterSpacing("")
-	return enc.Encode(sfvc)
+	if err := enc.Encode(sfvc); err != nil {
+		return nil, fmt.Errorf("failed to encode SFV: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func Parse(input []byte) (Identifier, error) {

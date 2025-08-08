@@ -77,7 +77,7 @@ func resolveRequest(ctx context.Context, comp Identifier) (string, error) {
 		return resolveRequestDerivedComponent(ctx, comp)
 	}
 
-	return resolveHeader(ctx, comp, req)
+	return resolveHeader(ctx, comp, req.Header)
 }
 
 func resolveRequestDerivedComponent(ctx context.Context, comp Identifier) (string, error) {
@@ -112,13 +112,32 @@ func resolveRequestDerivedComponent(ctx context.Context, comp Identifier) (strin
 			return "", fmt.Errorf("query component not found")
 		}
 		return "?" + req.URL.RawQuery, nil
+	case "@target-uri":
+		if req.URL == nil {
+			return "", fmt.Errorf("request URL is nil")
+		}
+		return req.URL.String(), nil
+	case "@query-param":
+		if req.URL == nil {
+			return "", fmt.Errorf("request URL is nil")
+		}
+		// Get the "name" parameter
+		var paramName string
+		if err := comp.GetParameter("name", &paramName); err != nil {
+			return "", fmt.Errorf("@query-param requires 'name' parameter: %w", err)
+		}
+		values := req.URL.Query()[paramName]
+		if len(values) == 0 {
+			return "", fmt.Errorf("query parameter %q not found", paramName)
+		}
+		return values[0], nil
 	default:
 		return "", fmt.Errorf("unknown derived component: %s", comp.name)
 	}
 }
 
 func resolveResponse(ctx context.Context, comp Identifier) (string, error) {
-	resp, ok := ctx.Value(requestKey{}).(*http.Response)
+	resp, ok := ResponseFromContext(ctx)
 	if !ok || resp == nil {
 		return "", fmt.Errorf("no response available in context")
 	}
@@ -128,11 +147,11 @@ func resolveResponse(ctx context.Context, comp Identifier) (string, error) {
 		return resolveResponseDerivedComponent(ctx, comp)
 	}
 
-	return resolveHeader(ctx, comp, resp.Request)
+	return resolveHeader(ctx, comp, resp.Header)
 }
 
 func resolveResponseDerivedComponent(ctx context.Context, comp Identifier) (string, error) {
-	resp, ok := ctx.Value(requestKey{}).(*http.Response)
+	resp, ok := ResponseFromContext(ctx)
 	if !ok || resp == nil {
 		return "", fmt.Errorf("no response available in context")
 	}
@@ -159,9 +178,9 @@ func resolveResponseDerivedComponent(ctx context.Context, comp Identifier) (stri
 	}
 }
 
-func resolveHeader(_ context.Context, comp Identifier, req *http.Request) (string, error) {
+func resolveHeader(_ context.Context, comp Identifier, hdr http.Header) (string, error) {
 	// Get header values (case-insensitive)
-	values := req.Header.Values(comp.name)
+	values := hdr.Values(comp.name)
 	if len(values) == 0 {
 		return "", fmt.Errorf("header field %q not found", comp.name)
 	}
@@ -178,3 +197,4 @@ func resolveHeader(_ context.Context, comp Identifier, req *http.Request) (strin
 	// Return the first value (RFC 9421 doesn't specify multiple values handling)
 	return values[0], nil
 }
+
