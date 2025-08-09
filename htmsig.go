@@ -11,8 +11,8 @@ import (
 
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
-	"github.com/lestrrat-go/htmsig/internal/sfv"
 	"github.com/lestrrat-go/jwx/v3/jws/jwsbb"
+	"github.com/lestrrat-go/sfv"
 )
 
 const (
@@ -56,10 +56,7 @@ func Sign(ctx context.Context, target any, inputValue *input.Value, key any) err
 			return fmt.Errorf("failed to generate signature: %w", err)
 		}
 
-		sfvsig, err := sfv.ByteSequence().Value(signature).Build()
-		if err != nil {
-			return fmt.Errorf("failed to build SFV byte sequence: %w", err)
-		}
+		sfvsig := sfv.ByteSequence(signature)
 
 		dict.Set(def.Label(), sfvsig)
 	}
@@ -135,50 +132,32 @@ func buildSignatureBase(ctx context.Context, def *input.Definition) ([]byte, err
 
 	// Add signature parameters (created, expires, keyid, alg, nonce, tag, etc.)
 	if created, ok := def.Created(); ok {
-		createdItem, err := sfv.Integer().Value(created).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create 'created' parameter: %w", err)
-		}
+		createdItem := sfv.BareInteger(created)
 		innerList.Parameter("created", createdItem)
 	}
 
 	if expires, ok := def.Expires(); ok {
-		expiresItem, err := sfv.Integer().Value(expires).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create 'expires' parameter: %w", err)
-		}
+		expiresItem := sfv.BareInteger(expires)
 		innerList.Parameter("expires", expiresItem)
 	}
 
 	if def.KeyID() != "" {
-		keyidItem, err := sfv.String().Value(def.KeyID()).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create 'keyid' parameter: %w", err)
-		}
+		keyidItem := sfv.BareString(def.KeyID())
 		innerList.Parameter("keyid", keyidItem)
 	}
 
 	if def.Algorithm() != "" {
-		algItem, err := sfv.String().Value(def.Algorithm()).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create 'alg' parameter: %w", err)
-		}
+		algItem := sfv.BareString(def.Algorithm())
 		innerList.Parameter("alg", algItem)
 	}
 
 	if nonce, ok := def.Nonce(); ok {
-		nonceItem, err := sfv.String().Value(nonce).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create 'nonce' parameter: %w", err)
-		}
+		nonceItem := sfv.BareString(nonce)
 		innerList.Parameter("nonce", nonceItem)
 	}
 
 	if tag, ok := def.Tag(); ok {
-		tagItem, err := sfv.String().Value(tag).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create 'tag' parameter: %w", err)
-		}
+		tagItem := sfv.BareString(tag)
 		innerList.Parameter("tag", tagItem)
 	}
 

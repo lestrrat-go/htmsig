@@ -6,7 +6,7 @@ import (
 
 	"github.com/lestrrat-go/blackmagic"
 	"github.com/lestrrat-go/htmsig/component"
-	"github.com/lestrrat-go/htmsig/internal/sfv"
+	"github.com/lestrrat-go/sfv"
 )
 
 // Definition represents a single signature definition within a Value.
@@ -312,50 +312,32 @@ func (d *Definition) SFV() (*sfv.InnerList, error) {
 
 	// Add standard parameters
 	if d.created != nil {
-		created, err := sfv.Integer().Value(*d.created).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create created parameter: %w", err)
-		}
+		created := sfv.BareInteger(*d.created)
 		listb.Parameter("created", created)
 	}
 
 	if d.expires != nil {
-		expires, err := sfv.Integer().Value(*d.expires).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create expires parameter: %w", err)
-		}
+		expires := sfv.BareInteger(*d.expires)
 		listb.Parameter("expires", expires)
 	}
 
 	if d.keyid != "" {
-		kid, err := sfv.String().Value(d.keyid).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create keyid parameter: %w", err)
-		}
+		kid := sfv.BareString(d.keyid)
 		listb.Parameter("keyid", kid)
 	}
 
 	if d.algorithm != "" {
-		alg, err := sfv.String().Value(d.algorithm).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create algorithm parameter: %w", err)
-		}
+		alg := sfv.BareString(d.algorithm)
 		listb.Parameter("alg", alg)
 	}
 
 	if d.nonce != nil {
-		nonce, err := sfv.String().Value(*d.nonce).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create nonce parameter: %w", err)
-		}
+		nonce := sfv.BareString(*d.nonce)
 		listb.Parameter("nonce", nonce)
 	}
 
 	if d.tag != nil {
-		tag, err := sfv.String().Value(*d.tag).Build()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create tag parameter: %w", err)
-		}
+		tag := sfv.BareString(*d.tag)
 		listb.Parameter("tag", tag)
 	}
 

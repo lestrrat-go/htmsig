@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lestrrat-go/htmsig/component"
-	"github.com/lestrrat-go/htmsig/internal/sfv"
+	"github.com/lestrrat-go/sfv"
 )
 
 // Value is a single signature input value (i.e. a single entry in

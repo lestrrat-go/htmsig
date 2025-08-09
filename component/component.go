@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lestrrat-go/blackmagic"
-	"github.com/lestrrat-go/htmsig/internal/sfv"
+	"github.com/lestrrat-go/sfv"
 )
 
 var (
@@ -78,18 +78,16 @@ func (c *Identifier) GetParameter(key string, dst any) error {
 
 func (c *Identifier) SFV() (sfv.Item, error) {
 	// Create a new SFV item with the component name
-	builder := sfv.String().Value(c.name).ToItem()
+	item := sfv.String(c.name)
 
 	// Add parameters to the item
 	for k, v := range c.parameters {
-		bi, err := sfv.BareItemFrom(v)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert parameter %q: %w", k, err)
+		if err := item.Parameter(k, v); err != nil {
+			return nil, fmt.Errorf("failed to add parameter %q: %w", k, err)
 		}
-		builder = builder.Parameter(k, bi)
 	}
 
-	return builder.Build()
+	return item, nil
 }
 
 // String returns the RFC 9421 string representation of the component identifier

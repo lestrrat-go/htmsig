@@ -1,6 +1,6 @@
 module github.com/lestrrat-go/htmsig
 
-go 1.24.2
+go 1.24.4
 
 require (
 	github.com/lestrrat-go/blackmagic v1.0.4
@@ -16,6 +16,7 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.0 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
+	github.com/lestrrat-go/sfv v0.0.0-20250809023214-7714a2dbad5e // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/valyala/fastjson v1.6.4 // indirect
