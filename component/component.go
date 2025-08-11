@@ -20,6 +20,10 @@ func Method() Identifier {
 	return derivedMethod
 }
 
+func QueryParam() Identifier {
+	return derivedQueryParam
+}
+
 func TargetURI() Identifier {
 	return derivedTargetURI
 }

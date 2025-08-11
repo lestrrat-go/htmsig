@@ -31,7 +31,7 @@ func TestComponent(t *testing.T) {
 	})
 
 	t.Run("Component with string parameter", func(t *testing.T) {
-		comp := component.New("@query-param").WithParameter("name", "Pet")
+		comp := component.QueryParam().WithParameter("name", "Pet")
 		require.Equal(t, "@query-param", comp.Name())
 		require.True(t, comp.HasParameter("name"))
 		var nameVal string
@@ -85,7 +85,7 @@ func TestParseComponent(t *testing.T) {
 		{
 			name:     "Component with string parameter",
 			input:    `"@query-param";name="Pet"`,
-			expected: component.New("@query-param").WithParameter("name", "Pet"),
+			expected: component.QueryParam().WithParameter("name", "Pet"),
 		},
 		{
 			name:     "Component with multiple parameters",

@@ -58,7 +58,9 @@ func Sign(ctx context.Context, target any, inputValue *input.Value, key any) err
 
 		sfvsig := sfv.ByteSequence(signature)
 
-		dict.Set(def.Label(), sfvsig)
+		if err := dict.Set(def.Label(), sfvsig); err != nil {
+			return fmt.Errorf("failed to set signature in dictionary: %w", err)
+		}
 	}
 
 	var sib strings.Builder
@@ -170,7 +172,9 @@ func buildSignatureBase(ctx context.Context, def *input.Definition) ([]byte, err
 	// Encode the inner list with no parameter spacing (HTTP Message Signature format)
 	encoder := sfv.NewEncoder(&output)
 	encoder.SetParameterSpacing("")
-	encoder.Encode(builtInnerList)
+	if err := encoder.Encode(builtInnerList); err != nil {
+		return nil, fmt.Errorf("failed to encode inner list: %w", err)
+	}
 
 	// Check for non-ASCII characters (RFC 9421 Section 2.5, step 4)
 	result := output.String()
