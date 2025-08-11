@@ -8,6 +8,7 @@ import (
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
+	"github.com/lestrrat-go/option"
 )
 
 // responseSigner signs HTTP responses according to RFC 9421.
@@ -57,7 +58,14 @@ func newResponseSigner(key any, keyID string, options ...signerOption) *response
 	}
 	
 	for _, option := range options {
-		option(signer)
+		switch option.Ident() {
+		case identSignerErrorHandler{}:
+			signer.ErrorHandler = option.Value().(func(error))
+		case identFailOnError{}:
+			signer.FailOnError = option.Value().(bool)
+		case identSignerComponents{}:
+			signer.DefaultComponents = option.Value().([]component.Identifier)
+		}
 	}
 	
 	return signer
@@ -184,26 +192,32 @@ func (w *signingResponseWriter) Write(data []byte) (int, error) {
 }
 
 // signerOption configures a responseSigner.
-type signerOption func(*responseSigner)
+type signerOption = option.Interface
 
 // WithSignerErrorHandler configures error handling for signature failures.
 func WithSignerErrorHandler(handler func(error)) signerOption {
-	return func(s *responseSigner) {
-		s.ErrorHandler = handler
-	}
+	return option.New(identSignerErrorHandler{}, handler)
 }
+
+type identSignerErrorHandler struct{}
+
+func (identSignerErrorHandler) String() string { return "WithSignerErrorHandler" }
 
 // WithFailOnError configures whether to fail responses on signature errors.
 func WithFailOnError(fail bool) signerOption {
-	return func(s *responseSigner) {
-		s.FailOnError = fail
-	}
+	return option.New(identFailOnError{}, fail)
 }
+
+type identFailOnError struct{}
+
+func (identFailOnError) String() string { return "WithFailOnError" }
 
 // WithSignerComponents configures the signature components for responses.
 func WithSignerComponents(components ...component.Identifier) signerOption {
-	return func(s *responseSigner) {
-		s.DefaultComponents = components
-	}
+	return option.New(identSignerComponents{}, components)
 }
+
+type identSignerComponents struct{}
+
+func (identSignerComponents) String() string { return "WithSignerComponents" }
 

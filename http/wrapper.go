@@ -7,6 +7,7 @@ import (
 
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
+	"github.com/lestrrat-go/option"
 )
 
 // Wrapper wraps an http.Handler to add signature verification and/or response signing.
@@ -18,31 +19,47 @@ type Wrapper struct {
 }
 
 // WrapperOption configures a Wrapper.
-type WrapperOption func(*Wrapper)
+type WrapperOption = option.Interface
 
 // WithResolver enables request verification with the provided key resolver.
 // The presence of this option enables verification functionality.
 func WithResolver(resolver KeyResolver, options ...VerifierOption) WrapperOption {
-	return func(w *Wrapper) {
-		w.verifier = NewVerifier(resolver, options...)
-		w.verifier.SkipOnMissing = true // Default to skip when no signature present
-	}
+	return option.New(identResolver{}, resolverConfig{resolver: resolver, options: options})
+}
+
+type identResolver struct{}
+
+func (identResolver) String() string { return "WithResolver" }
+
+type resolverConfig struct {
+	resolver KeyResolver
+	options  []VerifierOption
 }
 
 // WithSigningKey enables response signing with the provided key and key ID.
 // The presence of this option enables signing functionality.
 func WithSigningKey(keyID string, key any, options ...signerOption) WrapperOption {
-	return func(w *Wrapper) {
-		w.signer = newResponseSigner(key, keyID, options...)
-	}
+	return option.New(identSigningKey{}, signingKeyConfig{keyID: keyID, key: key, options: options})
+}
+
+type identSigningKey struct{}
+
+func (identSigningKey) String() string { return "WithSigningKey" }
+
+type signingKeyConfig struct {
+	keyID   string
+	key     any
+	options []signerOption
 }
 
 // WithErrorHandler configures a custom error handler for verification failures.
 func WithErrorHandler(handler http.Handler) WrapperOption {
-	return func(w *Wrapper) {
-		w.errorHandler = handler
-	}
+	return option.New(identWrapperErrorHandler{}, handler)
 }
+
+type identWrapperErrorHandler struct{}
+
+func (identWrapperErrorHandler) String() string { return "WithErrorHandler" }
 
 // Wrap wraps an HTTP handler with signature verification and/or signing capabilities.
 func Wrap(h http.Handler, options ...WrapperOption) http.Handler {
@@ -52,7 +69,17 @@ func Wrap(h http.Handler, options ...WrapperOption) http.Handler {
 	}
 
 	for _, opt := range options {
-		opt(w)
+		switch opt.Ident() {
+		case identResolver{}:
+			config := opt.Value().(resolverConfig)
+			w.verifier = NewVerifier(config.resolver, config.options...)
+			w.verifier.SkipOnMissing = true // Default to skip when no signature present
+		case identSigningKey{}:
+			config := opt.Value().(signingKeyConfig)
+			w.signer = newResponseSigner(config.key, config.keyID, config.options...)
+		case identWrapperErrorHandler{}:
+			w.errorHandler = opt.Value().(http.Handler)
+		}
 	}
 
 	return w

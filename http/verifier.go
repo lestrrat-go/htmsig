@@ -8,6 +8,7 @@ import (
 
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
+	"github.com/lestrrat-go/option"
 )
 
 // KeyResolver resolves keys for signature verification.
@@ -86,7 +87,18 @@ func NewVerifier(resolver KeyResolver, options ...VerifierOption) *Verifier {
 	}
 	
 	for _, option := range options {
-		option(verifier)
+		switch option.Ident() {
+		case identMaxSignatureAge{}:
+			verifier.MaxSignatureAge = option.Value().(time.Duration)
+		case identRequiredComponents{}:
+			verifier.RequiredComponents = option.Value().([]component.Identifier)
+		case identAllowedAlgorithms{}:
+			verifier.AllowedAlgorithms = option.Value().([]string)
+		case identSkipOnMissing{}:
+			verifier.SkipOnMissing = option.Value().(bool)
+		case identVerifierErrorHandler{}:
+			verifier.ErrorHandler = option.Value().(http.Handler)
+		}
 	}
 	
 	return verifier
@@ -165,40 +177,58 @@ func DefaultErrorHandler() http.Handler {
 }
 
 // VerifierOption configures a Verifier.
-type VerifierOption func(*Verifier)
+type VerifierOption = option.Interface
+
+type verifierOption struct {
+	maxSignatureAge     *time.Duration
+	requiredComponents  []component.Identifier
+	allowedAlgorithms   []string
+	skipOnMissing       *bool
+	errorHandler        http.Handler
+}
 
 // WithMaxSignatureAge configures maximum signature age for replay protection.
 func WithMaxSignatureAge(maxAge time.Duration) VerifierOption {
-	return func(v *Verifier) {
-		v.MaxSignatureAge = maxAge
-	}
+	return option.New(identMaxSignatureAge{}, maxAge)
 }
+
+type identMaxSignatureAge struct{}
+
+func (identMaxSignatureAge) String() string { return "WithMaxSignatureAge" }
 
 // WithRequiredComponents configures components that must be present in signatures.
 func WithRequiredComponents(components ...component.Identifier) VerifierOption {
-	return func(v *Verifier) {
-		v.RequiredComponents = components
-	}
+	return option.New(identRequiredComponents{}, components)
 }
+
+type identRequiredComponents struct{}
+
+func (identRequiredComponents) String() string { return "WithRequiredComponents" }
 
 // WithAllowedAlgorithms restricts which algorithms are accepted.
 func WithAllowedAlgorithms(algorithms ...string) VerifierOption {
-	return func(v *Verifier) {
-		v.AllowedAlgorithms = algorithms
-	}
+	return option.New(identAllowedAlgorithms{}, algorithms)
 }
+
+type identAllowedAlgorithms struct{}
+
+func (identAllowedAlgorithms) String() string { return "WithAllowedAlgorithms" }
 
 // WithSkipOnMissing configures whether to skip verification when no signature is present.
 func WithSkipOnMissing(skip bool) VerifierOption {
-	return func(v *Verifier) {
-		v.SkipOnMissing = skip
-	}
+	return option.New(identSkipOnMissing{}, skip)
 }
+
+type identSkipOnMissing struct{}
+
+func (identSkipOnMissing) String() string { return "WithSkipOnMissing" }
 
 // WithVerifierErrorHandler configures custom error handling.
 func WithVerifierErrorHandler(handler http.Handler) VerifierOption {
-	return func(v *Verifier) {
-		v.ErrorHandler = handler
-	}
+	return option.New(identVerifierErrorHandler{}, handler)
 }
+
+type identVerifierErrorHandler struct{}
+
+func (identVerifierErrorHandler) String() string { return "WithVerifierErrorHandler" }
 

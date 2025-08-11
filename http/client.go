@@ -8,6 +8,7 @@ import (
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
+	"github.com/lestrrat-go/option"
 )
 
 // SigningTransport is an http.RoundTripper that signs HTTP requests.
@@ -134,7 +135,20 @@ func NewClient(key any, keyID string, options ...TransportOption) *http.Client {
 
 	// Apply options
 	for _, option := range options {
-		option(transport)
+		switch option.Ident() {
+		case identTransport{}:
+			transport.Transport = option.Value().(http.RoundTripper)
+		case identAlgorithm{}:
+			transport.Algorithm = option.Value().(string)
+		case identComponents{}:
+			transport.DefaultComponents = option.Value().([]component.Identifier)
+		case identSignatureLabel{}:
+			transport.SignatureLabel = option.Value().(string)
+		case identWithoutCreated{}:
+			transport.IncludeCreated = false
+		case identTag{}:
+			transport.Tag = option.Value().(string)
+		}
 	}
 
 	return &http.Client{
@@ -143,46 +157,58 @@ func NewClient(key any, keyID string, options ...TransportOption) *http.Client {
 }
 
 // TransportOption configures a SigningTransport.
-type TransportOption func(*SigningTransport)
+type TransportOption = option.Interface
 
 // WithTransport sets the underlying transport.
 func WithTransport(transport http.RoundTripper) TransportOption {
-	return func(t *SigningTransport) {
-		t.Transport = transport
-	}
+	return option.New(identTransport{}, transport)
 }
+
+type identTransport struct{}
+
+func (identTransport) String() string { return "WithTransport" }
 
 // WithAlgorithm sets the signature algorithm.
 func WithAlgorithm(algorithm string) TransportOption {
-	return func(t *SigningTransport) {
-		t.Algorithm = algorithm
-	}
+	return option.New(identAlgorithm{}, algorithm)
 }
+
+type identAlgorithm struct{}
+
+func (identAlgorithm) String() string { return "WithAlgorithm" }
 
 // WithComponents sets the signature components.
 func WithComponents(components ...component.Identifier) TransportOption {
-	return func(t *SigningTransport) {
-		t.DefaultComponents = components
-	}
+	return option.New(identComponents{}, components)
 }
+
+type identComponents struct{}
+
+func (identComponents) String() string { return "WithComponents" }
 
 // WithSignatureLabel sets the signature label.
 func WithSignatureLabel(label string) TransportOption {
-	return func(t *SigningTransport) {
-		t.SignatureLabel = label
-	}
+	return option.New(identSignatureLabel{}, label)
 }
+
+type identSignatureLabel struct{}
+
+func (identSignatureLabel) String() string { return "WithSignatureLabel" }
 
 // WithoutCreated disables the created parameter.
 func WithoutCreated() TransportOption {
-	return func(t *SigningTransport) {
-		t.IncludeCreated = false
-	}
+	return option.New(identWithoutCreated{}, true)
 }
+
+type identWithoutCreated struct{}
+
+func (identWithoutCreated) String() string { return "WithoutCreated" }
 
 // WithTag sets the application-specific tag.
 func WithTag(tag string) TransportOption {
-	return func(t *SigningTransport) {
-		t.Tag = tag
-	}
+	return option.New(identTag{}, tag)
 }
+
+type identTag struct{}
+
+func (identTag) String() string { return "WithTag" }
