@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 type modeKey struct{}
-type requestKey struct{}
-type responseKey struct{}
+type requestInfoKey struct{}
+type responseInfoKey struct{}
 
 type Mode int
 
@@ -17,6 +18,24 @@ const (
 	ModeRequest Mode = iota
 	ModeResponse
 )
+
+// RequestInfo contains the discrete components needed for request signature resolution
+type RequestInfo struct {
+	Headers   http.Header
+	Method    string
+	Scheme    string
+	Authority string
+	Path      string
+	RawQuery  string
+	TargetURI string
+}
+
+// ResponseInfo contains the discrete components needed for response signature resolution  
+type ResponseInfo struct {
+	Headers    http.Header
+	StatusCode int
+	Request    *RequestInfo // For response components that need request info
+}
 
 // WithMode adds a mode to the context for later retrieval. IF unspecified,
 // the default mode is to resolve components for HTTP requests.
@@ -32,23 +51,95 @@ func ModeFromContext(ctx context.Context) Mode {
 	return mode
 }
 
-// WithRequest adds an HTTP request to the context for later retrieval.
-func WithRequest(ctx context.Context, req *http.Request) context.Context {
-	return context.WithValue(ctx, requestKey{}, req)
+
+// WithRequestInfo adds request information to the context using discrete values
+func WithRequestInfo(ctx context.Context, headers http.Header, method, scheme, authority, path, rawQuery, targetURI string) context.Context {
+	info := &RequestInfo{
+		Headers:   headers,
+		Method:    method,
+		Scheme:    scheme,
+		Authority: authority,
+		Path:      path,
+		RawQuery:  rawQuery,
+		TargetURI: targetURI,
+	}
+	return context.WithValue(ctx, requestInfoKey{}, info)
 }
 
-func RequestFromContext(ctx context.Context) (*http.Request, bool) {
-	req, ok := ctx.Value(requestKey{}).(*http.Request)
-	return req, ok
+func RequestInfoFromContext(ctx context.Context) (*RequestInfo, bool) {
+	info, ok := ctx.Value(requestInfoKey{}).(*RequestInfo)
+	return info, ok
 }
 
-func WithResponse(ctx context.Context, resp *http.Response) context.Context {
-	return context.WithValue(ctx, responseKey{}, resp)
+// WithResponseInfo adds response information to the context using discrete values
+func WithResponseInfo(ctx context.Context, headers http.Header, statusCode int, requestInfo *RequestInfo) context.Context {
+	info := &ResponseInfo{
+		Headers:    headers,
+		StatusCode: statusCode,
+		Request:    requestInfo,
+	}
+	return context.WithValue(ctx, responseInfoKey{}, info)
 }
 
-func ResponseFromContext(ctx context.Context) (*http.Response, bool) {
-	resp, ok := ctx.Value(responseKey{}).(*http.Response)
-	return resp, ok
+func ResponseInfoFromContext(ctx context.Context) (*ResponseInfo, bool) {
+	info, ok := ctx.Value(responseInfoKey{}).(*ResponseInfo)
+	return info, ok
+}
+
+// Helper function to create RequestInfo from http.Request
+func RequestInfoFromHTTP(req *http.Request) *RequestInfo {
+	if req == nil || req.URL == nil {
+		return nil
+	}
+	
+	return &RequestInfo{
+		Headers:   req.Header,
+		Method:    req.Method,
+		Scheme:    req.URL.Scheme,
+		Authority: req.URL.Host,
+		Path:      req.URL.Path,
+		RawQuery:  req.URL.RawQuery,
+		TargetURI: req.URL.String(),
+	}
+}
+
+// WithRequestInfoFromHTTP is a convenience function that extracts request info from an http.Request
+// and adds it to the context.
+func WithRequestInfoFromHTTP(ctx context.Context, req *http.Request) context.Context {
+	reqInfo := RequestInfoFromHTTP(req)
+	if reqInfo == nil {
+		return ctx
+	}
+	return WithRequestInfo(ctx, reqInfo.Headers, reqInfo.Method, reqInfo.Scheme,
+		reqInfo.Authority, reqInfo.Path, reqInfo.RawQuery, reqInfo.TargetURI)
+}
+
+// Helper function to create ResponseInfo from http.Response
+func ResponseInfoFromHTTP(resp *http.Response) *ResponseInfo {
+	if resp == nil {
+		return nil
+	}
+	
+	var requestInfo *RequestInfo
+	if resp.Request != nil {
+		requestInfo = RequestInfoFromHTTP(resp.Request)
+	}
+	
+	return &ResponseInfo{
+		Headers:    resp.Header,
+		StatusCode: resp.StatusCode,
+		Request:    requestInfo,
+	}
+}
+
+// WithResponseInfoFromHTTP is a convenience function that extracts response info from an http.Response
+// and adds it to the context.
+func WithResponseInfoFromHTTP(ctx context.Context, resp *http.Response) context.Context {
+	respInfo := ResponseInfoFromHTTP(resp)
+	if respInfo == nil {
+		return ctx
+	}
+	return WithResponseInfo(ctx, respInfo.Headers, respInfo.StatusCode, respInfo.Request)
 }
 
 // Resolve resolves the component identifier to its value. Since the resolution
@@ -67,66 +158,49 @@ func Resolve(ctx context.Context, comp Identifier) (string, error) {
 }
 
 func resolveRequest(ctx context.Context, comp Identifier) (string, error) {
-	req, ok := RequestFromContext(ctx)
+	reqInfo, ok := RequestInfoFromContext(ctx)
 	if !ok {
-		return "", fmt.Errorf("no request available in context")
+		return "", fmt.Errorf("no request information available in context")
 	}
 
 	compName := comp.name
 	if strings.HasPrefix(compName, "@") {
-		return resolveRequestDerivedComponent(ctx, comp)
+		return resolveRequestDerivedComponentFromInfo(ctx, comp, reqInfo)
 	}
-
-	return resolveHeader(ctx, comp, req.Header)
+	return resolveHeader(ctx, comp, reqInfo.Headers)
 }
 
-func resolveRequestDerivedComponent(ctx context.Context, comp Identifier) (string, error) {
-	req, ok := RequestFromContext(ctx)
-	if !ok {
-		return "", fmt.Errorf("no request available in context")
-	}
-
+func resolveRequestDerivedComponentFromInfo(ctx context.Context, comp Identifier, reqInfo *RequestInfo) (string, error) {
 	switch comp.name {
 	case "@method":
-		return req.Method, nil
+		return reqInfo.Method, nil
 	case "@scheme":
-		if req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		return req.URL.Scheme, nil
+		return reqInfo.Scheme, nil
 	case "@authority":
-		if req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		return req.URL.Host, nil
+		return reqInfo.Authority, nil
 	case "@path":
-		if req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		return req.URL.Path, nil
+		return reqInfo.Path, nil
 	case "@query":
-		if req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		if req.URL.RawQuery == "" {
+		if reqInfo.RawQuery == "" {
 			return "", fmt.Errorf("query component not found")
 		}
-		return "?" + req.URL.RawQuery, nil
+		return "?" + reqInfo.RawQuery, nil
 	case "@target-uri":
-		if req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
-		return req.URL.String(), nil
+		return reqInfo.TargetURI, nil
 	case "@query-param":
-		if req.URL == nil {
-			return "", fmt.Errorf("request URL is nil")
-		}
 		// Get the "name" parameter
 		var paramName string
 		if err := comp.GetParameter("name", &paramName); err != nil {
 			return "", fmt.Errorf("@query-param requires 'name' parameter: %w", err)
 		}
-		values := req.URL.Query()[paramName]
+		
+		// Parse query string to extract parameter
+		queryValues, err := url.ParseQuery(reqInfo.RawQuery)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse query: %w", err)
+		}
+		
+		values := queryValues[paramName]
 		if len(values) == 0 {
 			return "", fmt.Errorf("query parameter %q not found", paramName)
 		}
@@ -136,26 +210,21 @@ func resolveRequestDerivedComponent(ctx context.Context, comp Identifier) (strin
 	}
 }
 
+
 func resolveResponse(ctx context.Context, comp Identifier) (string, error) {
-	resp, ok := ResponseFromContext(ctx)
-	if !ok || resp == nil {
-		return "", fmt.Errorf("no response available in context")
+	respInfo, ok := ResponseInfoFromContext(ctx)
+	if !ok {
+		return "", fmt.Errorf("no response information available in context")
 	}
 
 	compName := comp.name
 	if strings.HasPrefix(compName, "@") {
-		return resolveResponseDerivedComponent(ctx, comp)
+		return resolveResponseDerivedComponentFromInfo(ctx, comp, respInfo)
 	}
-
-	return resolveHeader(ctx, comp, resp.Header)
+	return resolveHeader(ctx, comp, respInfo.Headers)
 }
 
-func resolveResponseDerivedComponent(ctx context.Context, comp Identifier) (string, error) {
-	resp, ok := ResponseFromContext(ctx)
-	if !ok || resp == nil {
-		return "", fmt.Errorf("no response available in context")
-	}
-
+func resolveResponseDerivedComponentFromInfo(ctx context.Context, comp Identifier, respInfo *ResponseInfo) (string, error) {
 	switch comp.name {
 	case "@method", "@scheme", "@authority", "@path", "@query":
 		// Make sure that the ;req parameter is set
@@ -167,16 +236,17 @@ func resolveResponseDerivedComponent(ctx context.Context, comp Identifier) (stri
 			return "", fmt.Errorf("'req' parameter must be true for %q component", comp.name)
 		}
 
-		if _, ok := RequestFromContext(ctx); !ok {
-			ctx = context.WithValue(ctx, requestKey{}, resp.Request)
+		if respInfo.Request == nil {
+			return "", fmt.Errorf("no request information available for %q component", comp.name)
 		}
-		return resolveRequestDerivedComponent(ctx, comp)
+		return resolveRequestDerivedComponentFromInfo(ctx, comp, respInfo.Request)
 	case "@status":
-		return fmt.Sprintf("%d", resp.StatusCode), nil
+		return fmt.Sprintf("%d", respInfo.StatusCode), nil
 	default:
 		return "", fmt.Errorf("unknown derived component: %s", comp.name)
 	}
 }
+
 
 func resolveHeader(_ context.Context, comp Identifier, hdr http.Header) (string, error) {
 	// Get header values (case-insensitive)

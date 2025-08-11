@@ -263,8 +263,8 @@ func TestRFC9421_B_2_1_MinimalSignature(t *testing.T) {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 	
 	// Sign the request
-	ctx := context.Background()
-	err = htmsig.Sign(ctx, req, inputValue, privKey)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, privKey)
 	require.NoError(t, err)
 	
 	// Verify expected signature headers exist
@@ -276,7 +276,8 @@ func TestRFC9421_B_2_1_MinimalSignature(t *testing.T) {
 	require.Equal(t, expectedSigInput, req.Header.Get("Signature-Input"))
 	
 	// Verify the signature
-	err = htmsig.Verify(ctx, req, pubKey)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, pubKey)
 	require.NoError(t, err)
 	
 	// Verify signature base generation produces expected result
@@ -319,8 +320,8 @@ func TestRFC9421_B_2_2_SelectiveCoverage(t *testing.T) {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 	
 	// Sign the request
-	ctx := context.Background()
-	err = htmsig.Sign(ctx, req, inputValue, privKey)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, privKey)
 	require.NoError(t, err)
 	
 	// Expected signature input (with line wrapping removed)
@@ -328,7 +329,8 @@ func TestRFC9421_B_2_2_SelectiveCoverage(t *testing.T) {
 	require.Equal(t, expectedSigInput, req.Header.Get("Signature-Input"))
 	
 	// Verify the signature
-	err = htmsig.Verify(ctx, req, pubKey)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, pubKey)
 	require.NoError(t, err)
 	
 	t.Logf("Selective coverage test passed - signature input: %s", req.Header.Get("Signature-Input"))
@@ -369,8 +371,8 @@ func TestRFC9421_B_2_3_FullCoverage(t *testing.T) {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 	
 	// Sign the request
-	ctx := context.Background()
-	err = htmsig.Sign(ctx, req, inputValue, privKey)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, privKey)
 	require.NoError(t, err)
 	
 	// Expected signature input (with line wrapping removed)
@@ -378,7 +380,8 @@ func TestRFC9421_B_2_3_FullCoverage(t *testing.T) {
 	require.Equal(t, expectedSigInput, req.Header.Get("Signature-Input"))
 	
 	// Verify the signature
-	err = htmsig.Verify(ctx, req, pubKey)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, pubKey)
 	require.NoError(t, err)
 	
 	t.Logf("Full coverage test passed - signature input: %s", req.Header.Get("Signature-Input"))
@@ -415,8 +418,8 @@ func TestRFC9421_B_2_4_ResponseSignature(t *testing.T) {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 	
 	// Sign the response
-	ctx := context.Background()
-	err = htmsig.Sign(ctx, resp, inputValue, privKey)
+	ctx := component.WithResponseInfoFromHTTP(context.Background(), resp)
+	err = htmsig.SignResponse(ctx, resp.Header, inputValue, privKey)
 	require.NoError(t, err)
 	
 	// Expected signature input (with line wrapping removed) 
@@ -424,7 +427,8 @@ func TestRFC9421_B_2_4_ResponseSignature(t *testing.T) {
 	require.Equal(t, expectedSigInput, resp.Header.Get("Signature-Input"))
 	
 	// Verify the signature
-	err = htmsig.Verify(ctx, resp, pubKey)
+	ctx = component.WithResponseInfoFromHTTP(context.Background(), resp)
+	err = htmsig.VerifyResponse(ctx, resp.Header, pubKey)
 	require.NoError(t, err)
 	
 	t.Logf("Response signature test passed - signature input: %s", resp.Header.Get("Signature-Input"))
@@ -457,8 +461,8 @@ func TestRFC9421_B_2_5_HMACSignature(t *testing.T) {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 	
 	// Sign the request
-	ctx := context.Background()
-	err = htmsig.Sign(ctx, req, inputValue, sharedSecret)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, sharedSecret)
 	require.NoError(t, err)
 	
 	// Expected signature input (with line wrapping removed)
@@ -466,7 +470,8 @@ func TestRFC9421_B_2_5_HMACSignature(t *testing.T) {
 	require.Equal(t, expectedSigInput, req.Header.Get("Signature-Input"))
 	
 	// Verify the signature
-	err = htmsig.Verify(ctx, req, sharedSecret)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, sharedSecret)
 	require.NoError(t, err)
 	
 	t.Logf("HMAC signature test passed - signature input: %s", req.Header.Get("Signature-Input"))
@@ -504,8 +509,8 @@ func TestRFC9421_B_2_6_Ed25519Signature(t *testing.T) {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 	
 	// Sign the request
-	ctx := context.Background()
-	err = htmsig.Sign(ctx, req, inputValue, privKey)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, privKey)
 	require.NoError(t, err)
 	
 	// Expected signature input (with line wrapping removed)
@@ -513,7 +518,8 @@ func TestRFC9421_B_2_6_Ed25519Signature(t *testing.T) {
 	require.Equal(t, expectedSigInput, req.Header.Get("Signature-Input"))
 	
 	// Verify the signature  
-	err = htmsig.Verify(ctx, req, pubKey)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, pubKey)
 	require.NoError(t, err)
 	
 	t.Logf("Ed25519 signature test passed - signature input: %s", req.Header.Get("Signature-Input"))
@@ -584,22 +590,22 @@ func TestRFC9421_MultipleSignatures(t *testing.T) {
 		Algorithm("hmac-sha256").
 		MustBuild()
 	
-	ctx := context.Background()
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
 	
 	// Sign with RSA-PSS
-	err = htmsig.Sign(ctx, req, input.NewValueBuilder().AddDefinition(rsaDef).MustBuild(), rsaPSSPrivKey)
+	err = htmsig.SignRequest(ctx, req.Header, input.NewValueBuilder().AddDefinition(rsaDef).MustBuild(), rsaPSSPrivKey)
 	require.NoError(t, err)
 	
 	// Sign with ECDSA (this will add to existing signatures)
-	err = htmsig.Sign(ctx, req, input.NewValueBuilder().AddDefinition(ecdsaDef).MustBuild(), ecdsaPrivKey)
+	err = htmsig.SignRequest(ctx, req.Header, input.NewValueBuilder().AddDefinition(ecdsaDef).MustBuild(), ecdsaPrivKey)
 	require.NoError(t, err)
 	
 	// Sign with Ed25519 
-	err = htmsig.Sign(ctx, req, input.NewValueBuilder().AddDefinition(ed25519Def).MustBuild(), ed25519PrivKey)
+	err = htmsig.SignRequest(ctx, req.Header, input.NewValueBuilder().AddDefinition(ed25519Def).MustBuild(), ed25519PrivKey)
 	require.NoError(t, err)
 	
 	// Sign with HMAC
-	err = htmsig.Sign(ctx, req, input.NewValueBuilder().AddDefinition(hmacDef).MustBuild(), sharedSecret)
+	err = htmsig.SignRequest(ctx, req.Header, input.NewValueBuilder().AddDefinition(hmacDef).MustBuild(), sharedSecret)
 	require.NoError(t, err)
 	
 	// Create key resolver for verification
@@ -613,7 +619,8 @@ func TestRFC9421_MultipleSignatures(t *testing.T) {
 	}
 	
 	// Verify all signatures
-	err = htmsig.Verify(ctx, req, resolver)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, resolver)
 	require.NoError(t, err)
 	
 	t.Logf("Multiple signature test passed")
@@ -688,11 +695,12 @@ func TestRFC9421_SignatureBaseGeneration(t *testing.T) {
 			
 			inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 			
-			ctx := context.Background()
-			err = htmsig.Sign(ctx, req, inputValue, rsaKey)
+			ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+			err = htmsig.SignRequest(ctx, req.Header, inputValue, rsaKey)
 			require.NoError(t, err)
 			
-			err = htmsig.Verify(ctx, req, rsaKey)
+			ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+			err = htmsig.VerifyRequest(ctx, req.Header, rsaKey)
 			require.NoError(t, err)
 			
 			t.Logf("Signature base test passed for: %s", tc.name)

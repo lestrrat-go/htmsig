@@ -49,7 +49,8 @@ func ExampleSign() {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 
 	// Sign the request
-	err = htmsig.Sign(context.Background(), req, inputValue, privateKey)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, privateKey)
 	if err != nil {
 		panic(err)
 	}
@@ -95,7 +96,8 @@ func ExampleVerify() {
 	}
 
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
-	err = htmsig.Sign(context.Background(), req, inputValue, privateKey)
+	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.SignRequest(ctx, req.Header, inputValue, privateKey)
 	if err != nil {
 		panic(err)
 	}
@@ -108,7 +110,8 @@ func ExampleVerify() {
 	}
 
 	// Verify the request signature
-	err = htmsig.Verify(context.Background(), req, keyResolver)
+	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+	err = htmsig.VerifyRequest(ctx, req.Header, keyResolver)
 	if err != nil {
 		fmt.Printf("Verification failed: %v\n", err)
 		return
