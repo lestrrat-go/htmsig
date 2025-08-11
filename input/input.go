@@ -1,6 +1,7 @@
 package input
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/lestrrat-go/htmsig/component"
@@ -261,5 +262,12 @@ func (v *Value) MarshalSFV() ([]byte, error) {
 		}
 	}
 
-	return dict.MarshalSFV()
+	// Use custom encoder with no parameter spacing to match RFC 9421 format
+	var buf bytes.Buffer
+	encoder := sfv.NewEncoder(&buf)
+	encoder.SetParameterSpacing("")
+	if err := encoder.Encode(dict); err != nil {
+		return nil, fmt.Errorf("failed to encode value dictionary with custom spacing: %w", err)
+	}
+	return buf.Bytes(), nil
 }

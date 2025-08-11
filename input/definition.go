@@ -1,6 +1,7 @@
 package input
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -129,9 +130,8 @@ func (b *DefinitionBuilder) Build() (*Definition, error) {
 	if b.def.label == "" {
 		return nil, fmt.Errorf("label is required")
 	}
-	if len(b.def.components) == 0 {
-		return nil, fmt.Errorf("at least one component is required")
-	}
+	// Per RFC 9421 Appendix B.2.1, a minimal signature can have zero components
+	// The signature base will still include the signature parameters line
 	// Note: keyid is optional - it's only required when using KeyResolver
 	// Note: algorithm is optional per RFC 9421 Section 3.2 step 6.2-6.4
 	// It can be determined from key material, configuration, or the alg parameter
@@ -296,7 +296,14 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 		return nil, fmt.Errorf("failed to convert definition into sfv: %w", err)
 	}
 
-	return list.MarshalSFV()
+	// Use custom encoder with no parameter spacing to match RFC 9421 format
+	var buf bytes.Buffer
+	encoder := sfv.NewEncoder(&buf)
+	encoder.SetParameterSpacing("")
+	if err := encoder.Encode(list); err != nil {
+		return nil, fmt.Errorf("failed to encode definition with custom spacing: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func (d *Definition) SFV() (*sfv.InnerList, error) {

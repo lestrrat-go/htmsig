@@ -39,7 +39,7 @@ func TestComponent(t *testing.T) {
 		require.Equal(t, "Pet", nameVal)
 		encoded, err := comp.MarshalSFV()
 		require.NoError(t, err)
-		require.Equal(t, `"@query-param";name=Pet`, string(encoded))
+		require.Equal(t, `"@query-param";name="Pet"`, string(encoded))
 	})
 
 	t.Run("Component with multiple parameters", func(t *testing.T) {

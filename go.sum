@@ -21,6 +21,8 @@ github.com/lestrrat-go/option/v2 v2.0.0 h1:XxrcaJESE1fokHy3FpaQ/cXW8ZsIdWcdFzzLO
 github.com/lestrrat-go/option/v2 v2.0.0/go.mod h1:oSySsmzMoR0iRzCDCaUfsCzxQHUEuhOViQObyy7S6Vg=
 github.com/lestrrat-go/sfv v0.0.0-20250809023214-7714a2dbad5e h1:qVNASUjBa2Y8BhojFTG37clBnJ6pCu1GEQ1lM4eamiA=
 github.com/lestrrat-go/sfv v0.0.0-20250809023214-7714a2dbad5e/go.mod h1:vuz+hqEIxrAN4liZnvbmAoggJm33TayPqYTwX1xssXQ=
+github.com/lestrrat-go/sfv v0.0.0-20250811060943-76d0e6cd22b8 h1:a1pRQuT5hGPjKK7VvLfsjbC3cO7b8R37NhjDXe+geKk=
+github.com/lestrrat-go/sfv v0.0.0-20250811060943-76d0e6cd22b8/go.mod h1:vuz+hqEIxrAN4liZnvbmAoggJm33TayPqYTwX1xssXQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/segmentio/asm v1.2.0 h1:9BQrFxC+YOHJlTlHGkTrFWf59nbL3XnCoFLTwDCI7ys=

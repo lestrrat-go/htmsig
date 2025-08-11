@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	github.com/lestrrat-go/blackmagic v1.0.4
 	github.com/lestrrat-go/jwx/v3 v3.0.10
-	github.com/lestrrat-go/sfv v0.0.0-20250809023214-7714a2dbad5e
+	github.com/lestrrat-go/sfv v0.0.0-20250811060943-76d0e6cd22b8
 	github.com/stretchr/testify v1.10.0
 )
 
