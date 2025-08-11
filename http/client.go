@@ -28,9 +28,9 @@ type SigningTransport struct {
 	// If empty, algorithm will be determined from the key type.
 	Algorithm string
 
-	// DefaultComponents specifies the default components to include in signatures.
+	// Components specifies the components to include in signatures.
 	// If nil, a sensible default set will be used for requests.
-	DefaultComponents []component.Identifier
+	Components []component.Identifier
 
 	// SignatureLabel is the label for the signature.
 	// If empty, defaults to "sig".
@@ -49,7 +49,7 @@ func NewSigningTransport(key any, keyID string) *SigningTransport {
 		Transport:         http.DefaultTransport,
 		Key:               key,
 		KeyID:             keyID,
-		DefaultComponents: DefaultRequestComponents(),
+		Components: DefaultRequestComponents(),
 		SignatureLabel:    "sig",
 		IncludeCreated:    true,
 	}
@@ -122,8 +122,8 @@ func (t *SigningTransport) createSignatureDefinition() *input.Definition {
 
 // getComponents returns the components to include in the signature.
 func (t *SigningTransport) getComponents() []component.Identifier {
-	if t.DefaultComponents != nil {
-		return t.DefaultComponents
+	if t.Components != nil {
+		return t.Components
 	}
 	return DefaultRequestComponents()
 }
@@ -141,7 +141,7 @@ func NewClient(key any, keyID string, options ...TransportOption) *http.Client {
 		case identAlgorithm{}:
 			transport.Algorithm = option.Value().(string)
 		case identComponents{}:
-			transport.DefaultComponents = option.Value().([]component.Identifier)
+			transport.Components = option.Value().([]component.Identifier)
 		case identSignatureLabel{}:
 			transport.SignatureLabel = option.Value().(string)
 		case identWithoutCreated{}:

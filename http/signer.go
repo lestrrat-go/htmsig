@@ -24,9 +24,9 @@ type responseSigner struct {
 	// If empty, algorithm will be determined from the key type.
 	Algorithm string
 
-	// DefaultComponents specifies the default components to include in signatures.
+	// Components specifies the components to include in signatures.
 	// If nil, a sensible default set will be used for responses.
-	DefaultComponents []component.Identifier
+	Components []component.Identifier
 
 	// SignatureLabel is the label for the signature.
 	// If empty, defaults to "sig".
@@ -52,7 +52,7 @@ func newResponseSigner(key any, keyID string, options ...signerOption) *response
 	signer := &responseSigner{
 		Key:               key,
 		KeyID:             keyID,
-		DefaultComponents: DefaultResponseComponents(),
+		Components: DefaultResponseComponents(),
 		SignatureLabel:    "sig",
 		IncludeCreated:    true,
 	}
@@ -64,7 +64,7 @@ func newResponseSigner(key any, keyID string, options ...signerOption) *response
 		case identFailOnError{}:
 			signer.FailOnError = option.Value().(bool)
 		case identSignerComponents{}:
-			signer.DefaultComponents = option.Value().([]component.Identifier)
+			signer.Components = option.Value().([]component.Identifier)
 		}
 	}
 	
@@ -82,12 +82,6 @@ func DefaultResponseComponents() []component.Identifier {
 	}
 }
 
-// ServeHTTP implements http.Handler for response signing.
-// This is no longer needed since signing happens automatically in the response writer.
-func (s *responseSigner) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Signing now happens automatically in signingResponseWriter.WriteHeader()
-	// This method is kept for compatibility but does nothing
-}
 
 // createSignatureDefinition creates a signature definition based on the signer configuration.
 func (s *responseSigner) createSignatureDefinition() *input.Definition {
@@ -113,8 +107,8 @@ func (s *responseSigner) createSignatureDefinition() *input.Definition {
 
 // getComponents returns the components to include in the signature.
 func (s *responseSigner) getComponents() []component.Identifier {
-	if s.DefaultComponents != nil {
-		return s.DefaultComponents
+	if s.Components != nil {
+		return s.Components
 	}
 	return DefaultResponseComponents()
 }
