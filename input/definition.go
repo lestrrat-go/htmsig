@@ -308,44 +308,59 @@ func (d *Definition) MarshalSFV() ([]byte, error) {
 
 func (d *Definition) SFV() (*sfv.InnerList, error) {
 	// Marshal as InnerList manually
-	listb := sfv.NewInnerListBuilder()
+	list := sfv.NewInnerList()
 	for _, comp := range d.components {
 		sfvc, err := comp.SFV()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert component %q to SFV: %w", comp, err)
 		}
-		listb.Add(sfvc)
+		if err := list.Add(sfvc); err != nil {
+			return nil, fmt.Errorf("failed to add component to list: %w", err)
+		}
 	}
 
 	// Add standard parameters
+	params := list.Parameters()
 	if d.created != nil {
 		created := sfv.BareInteger(*d.created)
-		listb.Parameter("created", created)
+		if err := params.Set("created", created); err != nil {
+			return nil, fmt.Errorf("failed to set created parameter: %w", err)
+		}
 	}
 
 	if d.expires != nil {
 		expires := sfv.BareInteger(*d.expires)
-		listb.Parameter("expires", expires)
+		if err := params.Set("expires", expires); err != nil {
+			return nil, fmt.Errorf("failed to set expires parameter: %w", err)
+		}
 	}
 
 	if d.keyid != "" {
 		kid := sfv.BareString(d.keyid)
-		listb.Parameter("keyid", kid)
+		if err := params.Set("keyid", kid); err != nil {
+			return nil, fmt.Errorf("failed to set keyid parameter: %w", err)
+		}
 	}
 
 	if d.algorithm != "" {
 		alg := sfv.BareString(d.algorithm)
-		listb.Parameter("alg", alg)
+		if err := params.Set("alg", alg); err != nil {
+			return nil, fmt.Errorf("failed to set alg parameter: %w", err)
+		}
 	}
 
 	if d.nonce != nil {
 		nonce := sfv.BareString(*d.nonce)
-		listb.Parameter("nonce", nonce)
+		if err := params.Set("nonce", nonce); err != nil {
+			return nil, fmt.Errorf("failed to set nonce parameter: %w", err)
+		}
 	}
 
 	if d.tag != nil {
 		tag := sfv.BareString(*d.tag)
-		listb.Parameter("tag", tag)
+		if err := params.Set("tag", tag); err != nil {
+			return nil, fmt.Errorf("failed to set tag parameter: %w", err)
+		}
 	}
 
 	// Add additional parameters
@@ -355,9 +370,11 @@ func (d *Definition) SFV() (*sfv.InnerList, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert parameter %q: %w", key, err)
 			}
-			listb.Parameter(key, bi)
+			if err := params.Set(key, bi); err != nil {
+				return nil, fmt.Errorf("failed to set parameter %q: %w", key, err)
+			}
 		}
 	}
 
-	return listb.Build()
+	return list, nil
 }
