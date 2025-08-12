@@ -95,7 +95,8 @@ func TestWrapper(t *testing.T) {
 	t.Run("Verification only", func(t *testing.T) {
 		keyResolver := &htmsighttp.StaticKeyResolver{Key: testPublicKey}
 
-		handler := htmsighttp.Wrap(testHandler("success"), htmsighttp.WithResolver(keyResolver))
+		verifier := htmsighttp.NewVerifier(keyResolver, htmsighttp.WithSkipOnMissing(true))
+		handler := htmsighttp.Wrap(testHandler("success"), htmsighttp.WithVerifier(verifier))
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		w := httptest.NewRecorder()
@@ -111,9 +112,11 @@ func TestWrapper(t *testing.T) {
 		keyResolver := &htmsighttp.StaticKeyResolver{Key: testPublicKey}
 
 		// Wrap the handler with both verification and signing
+		verifier := htmsighttp.NewVerifier(keyResolver, htmsighttp.WithSkipOnMissing(true))
+		signer := htmsighttp.NewResponseSigner(testPrivateKey, "test-key")
 		handler := htmsighttp.Wrap(testHandler("success"),
-			htmsighttp.WithResolver(keyResolver),
-			htmsighttp.WithSigningKey("test-key", testPrivateKey))
+			htmsighttp.WithVerifier(verifier),
+			htmsighttp.WithSigner(signer))
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		w := httptest.NewRecorder()

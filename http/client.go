@@ -11,6 +11,33 @@ import (
 	"github.com/lestrrat-go/option"
 )
 
+// Clock provides the current time for timestamp generation.
+type Clock interface {
+	Now() time.Time
+}
+
+// SystemClock uses the system time.
+type SystemClock struct{}
+
+func (SystemClock) Now() time.Time {
+	return time.Now()
+}
+
+// fixedClock always returns the same time, useful for testing.
+type fixedClock struct {
+	time time.Time
+}
+
+func (c fixedClock) Now() time.Time {
+	return c.time
+}
+
+// FixedClock returns a Clock that always returns the same time.
+// This is useful for testing to ensure deterministic timestamps.
+func FixedClock(t time.Time) Clock {
+	return fixedClock{time: t}
+}
+
 // SigningTransport is an http.RoundTripper that signs HTTP requests.
 type SigningTransport struct {
 	// Transport is the underlying RoundTripper.
@@ -41,6 +68,9 @@ type SigningTransport struct {
 
 	// Tag is an application-specific tag to include in the signature.
 	Tag string
+
+	// Clock provides timestamps. If nil, SystemClock is used.
+	Clock Clock
 }
 
 // NewSigningTransport creates a new SigningTransport with the given configuration.
@@ -110,7 +140,11 @@ func (t *SigningTransport) createSignatureDefinition() *input.Definition {
 	}
 
 	if t.IncludeCreated {
-		builder = builder.Created(time.Now().Unix())
+		clock := t.Clock
+		if clock == nil {
+			clock = SystemClock{}
+		}
+		builder = builder.Created(clock.Now().Unix())
 	}
 
 	if t.Tag != "" {
@@ -144,10 +178,12 @@ func NewClient(key any, keyID string, options ...TransportOption) *http.Client {
 			transport.Components = option.Value().([]component.Identifier)
 		case identSignatureLabel{}:
 			transport.SignatureLabel = option.Value().(string)
-		case identWithoutCreated{}:
-			transport.IncludeCreated = false
+		case identCreated{}:
+			transport.IncludeCreated = option.Value().(bool)
 		case identTag{}:
 			transport.Tag = option.Value().(string)
+		case identClockOption{}:
+			transport.Clock = option.Value().(Clock)
 		}
 	}
 
@@ -195,14 +231,14 @@ type identSignatureLabel struct{}
 
 func (identSignatureLabel) String() string { return "WithSignatureLabel" }
 
-// WithoutCreated disables the created parameter.
-func WithoutCreated() TransportOption {
-	return option.New(identWithoutCreated{}, true)
+// WithCreated controls whether to include the created parameter.
+func WithCreated(include bool) TransportOption {
+	return option.New(identCreated{}, include)
 }
 
-type identWithoutCreated struct{}
+type identCreated struct{}
 
-func (identWithoutCreated) String() string { return "WithoutCreated" }
+func (identCreated) String() string { return "WithCreated" }
 
 // WithTag sets the application-specific tag.
 func WithTag(tag string) TransportOption {
@@ -212,3 +248,30 @@ func WithTag(tag string) TransportOption {
 type identTag struct{}
 
 func (identTag) String() string { return "WithTag" }
+
+// SignVerifyOption can be used with both signing and verification operations.
+type SignVerifyOption interface {
+	transportOption()
+	signerOption()
+	option.Interface
+}
+
+// clockOption implements SignVerifyOption
+type clockOption struct {
+	clock Clock
+}
+
+func (c clockOption) Ident() any { return identClockOption{} }
+func (c clockOption) Value() any { return c.clock }
+func (c clockOption) transportOption() {}
+func (c clockOption) signerOption() {}
+
+type identClockOption struct{}
+
+func (identClockOption) String() string { return "WithClock" }
+
+// WithClock sets the clock used for timestamp generation.
+// This option works for both TransportOption and signerOption.
+func WithClock(clock Clock) SignVerifyOption {
+	return clockOption{clock: clock}
+}

@@ -46,6 +46,10 @@ func (m *MapKeyResolver) ResolveKey(keyID string) (any, error) {
 }
 
 // Verifier verifies incoming HTTP request signatures according to RFC 9421.
+// 
+// For most use cases, prefer using Wrap() with WithVerification() which provides
+// a more convenient API. Use Verifier directly only when you need verification-only
+// middleware or want to integrate with existing middleware chains.
 type Verifier struct {
 	// KeyResolver resolves keys for signature verification
 	KeyResolver KeyResolver
@@ -78,6 +82,12 @@ type Verifier struct {
 }
 
 // NewVerifier creates a new Verifier with the given key resolver.
+// 
+// For most use cases, prefer using Wrap() with WithVerification() instead:
+//   handler := http.Wrap(yourHandler, http.WithVerification(resolver, options...))
+// 
+// Use NewVerifier directly only when you need a reusable verifier or 
+// verification-only middleware.
 func NewVerifier(resolver KeyResolver, options ...VerifierOption) *Verifier {
 	verifier := &Verifier{
 		KeyResolver:        resolver,

@@ -20,7 +20,9 @@
 //	signer := http.NewResponseSigner(privateKey, "my-key-id")
 //	
 //	// Wrap your handler to verify requests and sign responses
-//	handler := http.VerifyAndSign(myHandler, verifier, signer)
+//	handler := http.Wrap(myHandler,
+//		http.WithVerifier(verifier),
+//		http.WithSigner(signer))
 //	
 //	http.ListenAndServe(":8080", handler)
 //
@@ -37,10 +39,29 @@
 // Both server and client components support extensive configuration:
 //
 //	// Custom verifier with specific components and error handling
-//	verifier := http.NewVerifier(keyResolver)
-//	verifier.RequiredSignatures = 2
-//	verifier.SkipOnMissing = true
-//	verifier.ErrorHandler = myCustomErrorHandler
+//	verifier := http.NewVerifier(keyResolver,
+//		http.WithMaxSignatureAge(5*time.Minute),
+//		http.WithRequiredComponents(
+//			component.Method(),
+//			component.New("@target-uri"),
+//			component.New("date"),
+//		),
+//		http.WithAllowedAlgorithms("rsa-pss-sha512"),
+//	)
+//	
+//	// Custom response signer
+//	signer := http.NewResponseSigner(privateKey, "key-id",
+//		http.WithSignerComponents(
+//			component.Status(),
+//			component.New("content-type"),
+//		),
+//		http.WithFailOnError(true),
+//	)
+//	
+//	// Use in wrapper
+//	handler := http.Wrap(myHandler,
+//		http.WithVerifier(verifier),
+//		http.WithSigner(signer))
 //	
 //	// Custom client with specific signature components
 //	client := http.NewClient(privateKey, "key-id",

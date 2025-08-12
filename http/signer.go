@@ -3,13 +3,16 @@ package http
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
 	"github.com/lestrrat-go/option"
 )
+
+// ResponseSigner signs HTTP responses according to RFC 9421.
+// Use NewResponseSigner to create instances.
+type ResponseSigner = responseSigner
 
 // responseSigner signs HTTP responses according to RFC 9421.
 type responseSigner struct {
@@ -45,6 +48,15 @@ type responseSigner struct {
 	// FailOnError determines whether to fail the response when signing fails.
 	// If false (default), signing errors are handled by ErrorHandler but don't abort the response.
 	FailOnError bool
+
+	// Clock provides timestamps. If nil, SystemClock is used.
+	Clock Clock
+}
+
+// NewResponseSigner creates a new responseSigner with the given key and key ID.
+// This is the public constructor for creating reusable response signers.
+func NewResponseSigner(key any, keyID string, options ...signerOption) *responseSigner {
+	return newResponseSigner(key, keyID, options...)
 }
 
 // newResponseSigner creates a new responseSigner with the given key and key ID.
@@ -65,6 +77,12 @@ func newResponseSigner(key any, keyID string, options ...signerOption) *response
 			signer.FailOnError = option.Value().(bool)
 		case identSignerComponents{}:
 			signer.Components = option.Value().([]component.Identifier)
+		case identSignerSignatureLabel{}:
+			signer.SignatureLabel = option.Value().(string)
+		case identSignerCreated{}:
+			signer.IncludeCreated = option.Value().(bool)
+		case identClockOption{}:
+			signer.Clock = option.Value().(Clock)
 		}
 	}
 	
@@ -95,7 +113,11 @@ func (s *responseSigner) createSignatureDefinition() *input.Definition {
 	}
 
 	if s.IncludeCreated {
-		builder = builder.Created(time.Now().Unix())
+		clock := s.Clock
+		if clock == nil {
+			clock = SystemClock{}
+		}
+		builder = builder.Created(clock.Now().Unix())
 	}
 
 	if s.Tag != "" {
@@ -214,4 +236,23 @@ func WithSignerComponents(components ...component.Identifier) signerOption {
 type identSignerComponents struct{}
 
 func (identSignerComponents) String() string { return "WithSignerComponents" }
+
+// WithSignerSignatureLabel sets the signature label for responses.
+func WithSignerSignatureLabel(label string) signerOption {
+	return option.New(identSignerSignatureLabel{}, label)
+}
+
+type identSignerSignatureLabel struct{}
+
+func (identSignerSignatureLabel) String() string { return "WithSignerSignatureLabel" }
+
+// WithSignerCreated controls whether to include the created parameter for responses.
+func WithSignerCreated(include bool) signerOption {
+	return option.New(identSignerCreated{}, include)
+}
+
+type identSignerCreated struct{}
+
+func (identSignerCreated) String() string { return "WithSignerCreated" }
+
 
