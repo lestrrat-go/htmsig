@@ -123,4 +123,3 @@ func (wrp *Wrapper) handleError(w http.ResponseWriter, r *http.Request, err erro
 
 	handler.ServeHTTP(w, r)
 }
-

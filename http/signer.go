@@ -62,13 +62,13 @@ func NewResponseSigner(key any, keyID string, options ...signerOption) *response
 // newResponseSigner creates a new responseSigner with the given key and key ID.
 func newResponseSigner(key any, keyID string, options ...signerOption) *responseSigner {
 	signer := &responseSigner{
-		Key:               key,
-		KeyID:             keyID,
-		Components: DefaultResponseComponents(),
-		SignatureLabel:    "sig",
-		IncludeCreated:    true,
+		Key:            key,
+		KeyID:          keyID,
+		Components:     DefaultResponseComponents(),
+		SignatureLabel: "sig",
+		IncludeCreated: true,
 	}
-	
+
 	for _, option := range options {
 		switch option.Ident() {
 		case identSignerErrorHandler{}:
@@ -85,7 +85,7 @@ func newResponseSigner(key any, keyID string, options ...signerOption) *response
 			signer.Clock = option.Value().(Clock)
 		}
 	}
-	
+
 	return signer
 }
 
@@ -99,7 +99,6 @@ func DefaultResponseComponents() []component.Identifier {
 		component.New("date"),
 	}
 }
-
 
 // createSignatureDefinition creates a signature definition based on the signer configuration.
 func (s *responseSigner) createSignatureDefinition() *input.Definition {
@@ -179,7 +178,7 @@ func (w *signingResponseWriter) addSignatureHeaders() {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 
 	// Prepare context with response information
-	ctx := component.WithResponseInfo(context.Background(), w.ResponseWriter.Header(), w.statusCode, 
+	ctx := component.WithResponseInfo(context.Background(), w.ResponseWriter.Header(), w.statusCode,
 		component.RequestInfoFromHTTP(w.request))
 
 	// Sign the response using the new SignResponse API
@@ -189,7 +188,7 @@ func (w *signingResponseWriter) addSignatureHeaders() {
 		if w.signer.ErrorHandler != nil {
 			w.signer.ErrorHandler(err)
 		}
-		
+
 		if w.signer.FailOnError {
 			// Fail the response by writing an error status
 			w.ResponseWriter.WriteHeader(http.StatusInternalServerError)
@@ -254,5 +253,3 @@ func WithSignerCreated(include bool) signerOption {
 type identSignerCreated struct{}
 
 func (identSignerCreated) String() string { return "WithSignerCreated" }
-
-

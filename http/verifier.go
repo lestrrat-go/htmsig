@@ -46,22 +46,22 @@ func (m *MapKeyResolver) ResolveKey(keyID string) (any, error) {
 }
 
 // Verifier verifies incoming HTTP request signatures according to RFC 9421.
-// 
+//
 // For most use cases, prefer using Wrap() with WithVerification() which provides
 // a more convenient API. Use Verifier directly only when you need verification-only
 // middleware or want to integrate with existing middleware chains.
 type Verifier struct {
 	// KeyResolver resolves keys for signature verification
 	KeyResolver KeyResolver
-	
+
 	// ErrorHandler is called when signature verification fails.
 	// If nil, DefaultErrorHandler is used (returns 401 Unauthorized).
 	ErrorHandler http.Handler
-	
+
 	// RequiredSignatures specifies minimum number of valid signatures required.
 	// If 0, at least one valid signature is required.
 	RequiredSignatures int
-	
+
 	// SkipOnMissing determines behavior when no Signature header is present.
 	// If true, verification is skipped and request continues.
 	// If false (default), missing signature is treated as verification failure.
@@ -82,20 +82,21 @@ type Verifier struct {
 }
 
 // NewVerifier creates a new Verifier with the given key resolver.
-// 
+//
 // For most use cases, prefer using Wrap() with WithVerification() instead:
-//   handler := http.Wrap(yourHandler, http.WithVerification(resolver, options...))
-// 
-// Use NewVerifier directly only when you need a reusable verifier or 
+//
+//	handler := http.Wrap(yourHandler, http.WithVerification(resolver, options...))
+//
+// Use NewVerifier directly only when you need a reusable verifier or
 // verification-only middleware.
 func NewVerifier(resolver KeyResolver, options ...VerifierOption) *Verifier {
 	verifier := &Verifier{
 		KeyResolver:        resolver,
 		ErrorHandler:       DefaultErrorHandler(),
 		RequiredSignatures: 1,
-		SkipOnMissing:     false,
+		SkipOnMissing:      false,
 	}
-	
+
 	for _, option := range options {
 		switch option.Ident() {
 		case identMaxSignatureAge{}:
@@ -110,7 +111,7 @@ func NewVerifier(resolver KeyResolver, options ...VerifierOption) *Verifier {
 			verifier.ErrorHandler = option.Value().(http.Handler)
 		}
 	}
-	
+
 	return verifier
 }
 
@@ -121,7 +122,7 @@ func (v *Verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check if signature headers are present
 	sigHeader := r.Header.Get("Signature")
 	sigInputHeader := r.Header.Get("Signature-Input")
-	
+
 	if sigHeader == "" && sigInputHeader == "" {
 		if v.SkipOnMissing {
 			return // Skip verification, allow request to continue
@@ -130,7 +131,7 @@ func (v *Verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		v.handleError(w, r, fmt.Errorf("missing signature headers"))
 		return
 	}
-	
+
 	// Verify the signature using the new VerifyRequest API
 	ctx := component.WithRequestInfoFromHTTP(context.Background(), r)
 	err := htmsig.VerifyRequest(ctx, r.Header, v.KeyResolver)
@@ -138,7 +139,7 @@ func (v *Verifier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		v.handleError(w, r, fmt.Errorf("signature verification failed: %w", err))
 		return
 	}
-	
+
 	// Verification successful - do nothing, let request continue
 }
 
@@ -148,11 +149,11 @@ func (v *Verifier) handleError(w http.ResponseWriter, r *http.Request, err error
 	if handler == nil {
 		handler = DefaultErrorHandler()
 	}
-	
+
 	// Store error in request context so error handler can access it
 	ctx := context.WithValue(r.Context(), errorContextKey, err)
 	r = r.WithContext(ctx)
-	
+
 	handler.ServeHTTP(w, r)
 }
 
@@ -179,10 +180,10 @@ func DefaultErrorHandler() http.Handler {
 		if err != nil {
 			errorMsg = err.Error()
 		}
-		
+
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "401 Unauthorized: %s\n", errorMsg)
+		_, _ = fmt.Fprintf(w, "401 Unauthorized: %s\n", errorMsg)
 	})
 }
 
@@ -190,11 +191,11 @@ func DefaultErrorHandler() http.Handler {
 type VerifierOption = option.Interface
 
 type verifierOption struct {
-	maxSignatureAge     *time.Duration
-	requiredComponents  []component.Identifier
-	allowedAlgorithms   []string
-	skipOnMissing       *bool
-	errorHandler        http.Handler
+	maxSignatureAge    *time.Duration
+	requiredComponents []component.Identifier
+	allowedAlgorithms  []string
+	skipOnMissing      *bool
+	errorHandler       http.Handler
 }
 
 // WithMaxSignatureAge configures maximum signature age for replay protection.
@@ -241,4 +242,3 @@ func WithVerifierErrorHandler(handler http.Handler) VerifierOption {
 type identVerifierErrorHandler struct{}
 
 func (identVerifierErrorHandler) String() string { return "WithVerifierErrorHandler" }
-

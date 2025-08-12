@@ -76,12 +76,12 @@ type SigningTransport struct {
 // NewSigningTransport creates a new SigningTransport with the given configuration.
 func NewSigningTransport(key any, keyID string) *SigningTransport {
 	return &SigningTransport{
-		Transport:         http.DefaultTransport,
-		Key:               key,
-		KeyID:             keyID,
-		Components: DefaultRequestComponents(),
-		SignatureLabel:    "sig",
-		IncludeCreated:    true,
+		Transport:      http.DefaultTransport,
+		Key:            key,
+		KeyID:          keyID,
+		Components:     DefaultRequestComponents(),
+		SignatureLabel: "sig",
+		IncludeCreated: true,
 	}
 }
 
@@ -261,10 +261,10 @@ type clockOption struct {
 	clock Clock
 }
 
-func (c clockOption) Ident() any { return identClockOption{} }
-func (c clockOption) Value() any { return c.clock }
+func (c clockOption) Ident() any       { return identClockOption{} }
+func (c clockOption) Value() any       { return c.clock }
 func (c clockOption) transportOption() {}
-func (c clockOption) signerOption() {}
+func (c clockOption) signerOption()    {}
 
 type identClockOption struct{}
 

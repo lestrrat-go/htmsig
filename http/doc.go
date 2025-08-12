@@ -4,7 +4,7 @@
 //
 // Server Components:
 //   - Verifier: Verifies incoming request signatures
-//   - ResponseSigner: Signs outgoing responses  
+//   - ResponseSigner: Signs outgoing responses
 //   - Wrapper: Orchestrates verification and signing around existing handlers
 //
 // Client Components:
@@ -15,22 +15,22 @@
 //
 //	// Create a verifier with key resolver
 //	verifier := http.NewVerifier(&http.StaticKeyResolver{Key: publicKey})
-//	
+//
 //	// Create a response signer
 //	signer := http.NewResponseSigner(privateKey, "my-key-id")
-//	
+//
 //	// Wrap your handler to verify requests and sign responses
 //	handler := http.Wrap(myHandler,
 //		http.WithVerifier(verifier),
 //		http.WithSigner(signer))
-//	
+//
 //	http.ListenAndServe(":8080", handler)
 //
 // # Basic Client Usage
 //
 //	// Create a signing client
 //	client := http.NewClient(privateKey, "my-key-id")
-//	
+//
 //	// All requests will be automatically signed
 //	resp, err := client.Get("https://example.com/api")
 //
@@ -48,7 +48,7 @@
 //		),
 //		http.WithAllowedAlgorithms("rsa-pss-sha512"),
 //	)
-//	
+//
 //	// Custom response signer
 //	signer := http.NewResponseSigner(privateKey, "key-id",
 //		http.WithSignerComponents(
@@ -57,12 +57,12 @@
 //		),
 //		http.WithFailOnError(true),
 //	)
-//	
+//
 //	// Use in wrapper
 //	handler := http.Wrap(myHandler,
 //		http.WithVerifier(verifier),
 //		http.WithSigner(signer))
-//	
+//
 //	// Custom client with specific signature components
 //	client := http.NewClient(privateKey, "key-id",
 //		http.WithComponents(
