@@ -309,51 +309,6 @@ func ExampleNewClient() {
 source: [http/http_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/http/http_example_test.go)
 <!-- END INCLUDE -->
 
-## Components
-
-### Core Package (`htmsig`)
-
-The main package provides low-level signing and verification functions:
-
-- `SignRequest(ctx, headers, inputValue, key)` - Sign HTTP requests
-- `SignResponse(ctx, headers, inputValue, key)` - Sign HTTP responses  
-- `VerifyRequest(ctx, headers, keyOrResolver)` - Verify HTTP requests
-- `VerifyResponse(ctx, headers, keyOrResolver)` - Verify HTTP responses
-
-### HTTP Package (`htmsig/http`)
-
-High-level HTTP integration with handlers, middleware, and clients:
-
-- **Server Components**:
-  - `Verifier` - Middleware for verifying incoming signatures
-  - `ResponseSigner` - Middleware for signing outgoing responses
-  - `Wrap()` - Combine verification and signing around handlers
-
-- **Client Components**:
-  - `SigningTransport` - HTTP transport that signs requests
-  - `NewClient()` - Create HTTP client with automatic signing
-
-- **Key Resolution**:
-  - `StaticKeyResolver` - Single key for all signatures
-  - `MapKeyResolver` - Map-based key lookup
-  - `KeyResolverFunc` - Custom key resolution function
-
-### Component Package (`htmsig/component`)
-
-Define which parts of HTTP messages to include in signatures:
-
-- **Derived Components**: `@method`, `@target-uri`, `@authority`, `@scheme`, `@request-target`, `@path`, `@query`, `@status`
-- **HTTP Fields**: Any HTTP header (e.g., `content-type`, `date`, `authorization`)
-- **Structured Fields**: Support for structured field parsing
-
-### Input Package (`htmsig/input`)
-
-Build signature input specifications:
-
-- `DefinitionBuilder` - Create signature definitions
-- `ValueBuilder` - Combine multiple signature definitions
-- Support for all RFC 9421 parameters: `created`, `expires`, `keyid`, `alg`, `nonce`, `tag`
-
 ## Supported Algorithms
 
 | Algorithm | RFC 9421 Name | Description |
@@ -369,94 +324,11 @@ Build signature input specifications:
 
 ### Custom Component Selection
 
-```go
-// Sign specific headers and derived components
-def, _ := input.NewDefinitionBuilder().
-    Components(
-        component.Method(),                    // @method
-        component.TargetURI(),                // @target-uri  
-        component.New("authorization"),        // authorization header
-        component.New("content-digest"),       // content-digest header
-        component.New("date"),                // date header
-    ).
-    Created(time.Now().Unix()).               // Add creation timestamp
-    Expires(time.Now().Add(time.Hour).Unix()). // Add expiration
-    Build()
-```
+You can specify exactly which parts of the HTTP message to include in signatures:
 
-### Key Resolution with Multiple Keys
-
-```go
-keyResolver := &htmsighttp.MapKeyResolver{
-    Keys: map[string]any{
-        "rsa-key-2021":    rsaPublicKey,
-        "ecdsa-key-2022":  ecdsaPublicKey,
-        "hmac-secret":     []byte("shared-secret"),
-    },
-}
-
-verifier := htmsighttp.NewVerifier(keyResolver)
-```
-
-### Response Signing
-
-```go
-// Sign HTTP responses
-signer := htmsighttp.NewResponseSigner(privateKey, "response-key",
-    htmsighttp.WithSignerComponents(
-        component.Status(),              // @status
-        component.New("content-type"),   // content-type header
-        component.New("content-length"), // content-length header
-    ),
-)
-
-handler := htmsighttp.Wrap(appHandler, htmsighttp.WithSigner(signer))
-```
-
-### Error Handling and Configuration
-
-```go
-verifier := htmsighttp.NewVerifier(keyResolver,
-    htmsighttp.WithMaxSignatureAge(5*time.Minute),     // Reject old signatures
-    htmsighttp.WithRequiredComponents(                  // Require specific components
-        component.Method(),
-        component.New("date"),
-    ),
-    htmsighttp.WithAllowedAlgorithms("rsa-pss-sha512"), // Restrict algorithms
-    htmsighttp.WithSkipOnMissing(false),               // Require signatures
-)
-```
-
-## Examples
-
-See the [examples directory](./examples/) for complete working examples:
-
-- Basic request/response signing
-- HTTP server with verification
-- HTTP client with signing
-- Multiple signature scenarios
-- Custom key resolution
-
-## RFC 9421 Compliance
-
-This implementation follows RFC 9421 specifications including:
-
-- ✅ Signature base construction (Section 2.5)
-- ✅ Signature creation and verification (Section 3)
-- ✅ All standard algorithms (Section 3.3)
-- ✅ Component identifiers (Section 2.1-2.3)
-- ✅ Signature parameters (Section 2.4)
-- ✅ Multiple signatures (Section 4.1)
-- ✅ Test vectors from RFC examples
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-
-1. All tests pass: `go test ./...`
-2. Code is formatted: `go fmt ./...`
-3. Linting passes: `golangci-lint run`
-4. New features include tests and documentation
+- **Derived Components**: `@method`, `@target-uri`, `@authority`, `@scheme`, `@request-target`, `@path`, `@query`, `@status`
+- **HTTP Fields**: Any HTTP header (e.g., `content-type`, `date`, `authorization`)
+- **Signature Parameters**: `created`, `expires`, `keyid`, `alg`, `nonce`, `tag`
 
 ## License
 
