@@ -25,7 +25,7 @@ func ExampleWrap() {
 	appHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Date", "Mon, 01 Jan 2024 00:00:00 GMT") // Fixed date for testing
-		fmt.Fprint(w, `{"message": "Hello, signed world!"}`)
+		_, _ = fmt.Fprint(w, `{"message": "Hello, signed world!"}`)
 	})
 
 	// Create fixed clock for deterministic timestamps
@@ -87,7 +87,7 @@ func ExampleNewClient() {
 	// Create the application handler
 	appHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status": "success"}`)
+		_, _ = fmt.Fprint(w, `{"status": "success"}`)
 	})
 
 	// Wrap with just response signing for now (verification can be added separately)
@@ -115,7 +115,7 @@ func ExampleNewClient() {
 		fmt.Printf("Request failed: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Only print if something went wrong
 	if resp.StatusCode != http.StatusOK {

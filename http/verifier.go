@@ -190,14 +190,6 @@ func DefaultErrorHandler() http.Handler {
 // VerifierOption configures a Verifier.
 type VerifierOption = option.Interface
 
-type verifierOption struct {
-	maxSignatureAge    *time.Duration
-	requiredComponents []component.Identifier
-	allowedAlgorithms  []string
-	skipOnMissing      *bool
-	errorHandler       http.Handler
-}
-
 // WithMaxSignatureAge configures maximum signature age for replay protection.
 func WithMaxSignatureAge(maxAge time.Duration) VerifierOption {
 	return option.New(identMaxSignatureAge{}, maxAge)

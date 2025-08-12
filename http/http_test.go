@@ -37,7 +37,7 @@ func testHandler(message string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, message)
+		_, _ = fmt.Fprint(w, message)
 	})
 }
 
@@ -139,7 +139,7 @@ func TestSigningTransport(t *testing.T) {
 			w.Header().Set("X-Signature", r.Header.Get("Signature"))
 			w.Header().Set("X-Signature-Input", r.Header.Get("Signature-Input"))
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, "ok")
+			_, _ = fmt.Fprint(w, "ok")
 		}))
 		defer server.Close()
 
@@ -150,7 +150,7 @@ func TestSigningTransport(t *testing.T) {
 		// Make a request
 		resp, err := client.Get(server.URL + "/test")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// Check that signature headers were added
 		require.NotEmpty(t, resp.Header.Get("X-Signature"))
@@ -241,7 +241,7 @@ func TestErrorHandling(t *testing.T) {
 	t.Run("Custom error handler", func(t *testing.T) {
 		customHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprint(w, "Custom error response")
+			_, _ = fmt.Fprint(w, "Custom error response")
 		})
 
 		verifier := htmsighttp.NewVerifier(&htmsighttp.StaticKeyResolver{Key: testPublicKey})

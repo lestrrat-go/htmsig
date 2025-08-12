@@ -178,11 +178,11 @@ func (w *signingResponseWriter) addSignatureHeaders() {
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 
 	// Prepare context with response information
-	ctx := component.WithResponseInfo(context.Background(), w.ResponseWriter.Header(), w.statusCode,
+	ctx := component.WithResponseInfo(context.Background(), w.Header(), w.statusCode,
 		component.RequestInfoFromHTTP(w.request))
 
 	// Sign the response using the new SignResponse API
-	err := htmsig.SignResponse(ctx, w.ResponseWriter.Header(), inputValue, w.signer.Key)
+	err := htmsig.SignResponse(ctx, w.Header(), inputValue, w.signer.Key)
 	if err != nil {
 		// Handle signing error based on configuration
 		if w.signer.ErrorHandler != nil {
