@@ -5,7 +5,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +18,6 @@ import (
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -129,28 +130,50 @@ func createTestResponse(req *http.Request) *http.Response {
 
 // parsePrivateKey parses a PEM private key and returns the appropriate type
 func parsePrivateKey(pemData string, keyType string) (any, error) {
-	key, err := jwk.ParseKey([]byte(pemData), jwk.WithPEM(true))
-	if err != nil {
-		return nil, err
+	block, _ := pem.Decode([]byte(pemData))
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
 	}
 
 	switch keyType {
 	case "rsa", "rsa-pss":
-		var rsaKey rsa.PrivateKey
-		if err := jwk.Export(key, &rsaKey); err != nil {
-			return nil, err
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			// Try PKCS8 format
+			keyIface, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse RSA private key: %w", err)
+			}
+			rsaKey, ok := keyIface.(*rsa.PrivateKey)
+			if !ok {
+				return nil, fmt.Errorf("expected RSA private key, got %T", keyIface)
+			}
+			return rsaKey, nil
 		}
-		return &rsaKey, nil
+		return key, nil
 	case "ecdsa":
-		var ecKey ecdsa.PrivateKey
-		if err := jwk.Export(key, &ecKey); err != nil {
-			return nil, err
+		key, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			// Try PKCS8 format
+			keyIface, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse ECDSA private key: %w", err)
+			}
+			ecKey, ok := keyIface.(*ecdsa.PrivateKey)
+			if !ok {
+				return nil, fmt.Errorf("expected ECDSA private key, got %T", keyIface)
+			}
+			return ecKey, nil
 		}
-		return &ecKey, nil
+		return key, nil
 	case "ed25519":
-		var edKey ed25519.PrivateKey
-		if err := jwk.Export(key, &edKey); err != nil {
-			return nil, err
+		keyIface, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Ed25519 private key: %w", err)
+		}
+		edKey, ok := keyIface.(ed25519.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("expected Ed25519 private key, got %T", keyIface)
 		}
 		return edKey, nil
 	default:
@@ -160,28 +183,45 @@ func parsePrivateKey(pemData string, keyType string) (any, error) {
 
 // parsePublicKey parses a PEM public key and returns the appropriate type
 func parsePublicKey(pemData string, keyType string) (any, error) {
-	key, err := jwk.ParseKey([]byte(pemData), jwk.WithPEM(true))
-	if err != nil {
-		return nil, err
+	block, _ := pem.Decode([]byte(pemData))
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
 	}
 
 	switch keyType {
 	case "rsa", "rsa-pss":
-		var rsaKey rsa.PublicKey
-		if err := jwk.Export(key, &rsaKey); err != nil {
-			return nil, err
+		key, err := x509.ParsePKCS1PublicKey(block.Bytes)
+		if err != nil {
+			// Try PKIX format
+			keyIface, err := x509.ParsePKIXPublicKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse RSA public key: %w", err)
+			}
+			rsaKey, ok := keyIface.(*rsa.PublicKey)
+			if !ok {
+				return nil, fmt.Errorf("expected RSA public key, got %T", keyIface)
+			}
+			return rsaKey, nil
 		}
-		return &rsaKey, nil
+		return key, nil
 	case "ecdsa":
-		var ecKey ecdsa.PublicKey
-		if err := jwk.Export(key, &ecKey); err != nil {
-			return nil, err
+		keyIface, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse ECDSA public key: %w", err)
 		}
-		return &ecKey, nil
+		ecKey, ok := keyIface.(*ecdsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("expected ECDSA public key, got %T", keyIface)
+		}
+		return ecKey, nil
 	case "ed25519":
-		var edKey ed25519.PublicKey
-		if err := jwk.Export(key, &edKey); err != nil {
-			return nil, err
+		keyIface, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse Ed25519 public key: %w", err)
+		}
+		edKey, ok := keyIface.(ed25519.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("expected Ed25519 public key, got %T", keyIface)
 		}
 		return edKey, nil
 	default:

@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/lestrrat-go/dsig"
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
-	"github.com/lestrrat-go/jwx/v3/jws/jwsbb"
 	"github.com/lestrrat-go/sfv"
 )
 
@@ -198,18 +198,18 @@ func buildSignatureBase(ctx context.Context, def *input.Definition) ([]byte, err
 
 // generateSignature creates a signature over the signature base using the provided key material
 // This implements the HTTP_SIGN primitive function from RFC 9421 Section 3.3
-// Uses JWX's jwsbb (JWS Bare Bones) for cryptographic signing operations
+// Uses DSIG for cryptographic signing operations
 func generateSignature(ctx context.Context, sigbase []byte, def *input.Definition, key any) ([]byte, error) {
-	// Determine the appropriate JWS algorithm, preferring explicit algorithm from Definition
-	algorithm, err := determineJWSAlgorithm(def, key)
+	// Determine the appropriate algorithm, preferring explicit algorithm from Definition
+	algorithm, err := determineAlgorithm(def, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to determine JWS algorithm: %w", err)
+		return nil, fmt.Errorf("failed to determine algorithm: %w", err)
 	}
 
-	// Use JWX's jwsbb to sign the signature base directly
+	// Use DSIG to sign the signature base directly
 	// RFC 9421 Section 3.3.7: "the HTTP message's signature base is used as the entire JWS Signing Input"
 	// "The JOSE Header is not used, and the signature base is not first encoded in Base64"
-	signature, err := jwsbb.Sign(key, algorithm, sigbase, nil)
+	signature, err := dsig.Sign(key, algorithm, sigbase, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign with algorithm %s: %w", algorithm, err)
 	}
@@ -217,60 +217,60 @@ func generateSignature(ctx context.Context, sigbase []byte, def *input.Definitio
 	return signature, nil
 }
 
-// determineJWSAlgorithm determines the appropriate JWS algorithm from Definition and key material
+// determineAlgorithm determines the appropriate algorithm from Definition and key material
 // First checks the explicit algorithm parameter in Definition, then falls back to key type detection
-func determineJWSAlgorithm(def *input.Definition, key any) (string, error) {
+func determineAlgorithm(def *input.Definition, key any) (string, error) {
 	// First, check if algorithm is explicitly specified in the Definition
 	if algorithm := def.Algorithm(); algorithm != "" {
-		// Convert RFC 9421 algorithm names to JWS algorithm names
-		return convertRFC9421ToJWS(algorithm)
+		// Convert RFC 9421 algorithm names to DSIG algorithm names
+		return convertRFC9421ToDSIG(algorithm)
 	}
 
 	// Fallback to determining algorithm from key material
-	return determineJWSAlgorithmFromKey(key)
+	return determineAlgorithmFromKey(key)
 }
 
-// convertRFC9421ToJWS converts RFC 9421 algorithm names to JWS algorithm identifiers
-// Maps the official RFC 9421 algorithm registry entries to their corresponding JWS algorithm names
-func convertRFC9421ToJWS(rfc9421Alg string) (string, error) {
+// convertRFC9421ToDSIG converts RFC 9421 algorithm names to DSIG algorithm identifiers
+// Maps the official RFC 9421 algorithm registry entries to their corresponding DSIG algorithm names
+func convertRFC9421ToDSIG(rfc9421Alg string) (string, error) {
 	switch rfc9421Alg {
 	// Official RFC 9421 algorithms from Section 6.2.2 Initial Contents
 	case "rsa-pss-sha512": // Section 3.3.1
-		return "PS512", nil
+		return dsig.RSAPSSWithSHA512, nil
 	case "rsa-v1_5-sha256": // Section 3.3.2
-		return "RS256", nil
+		return dsig.RSAPKCS1v15WithSHA256, nil
 	case "hmac-sha256": // Section 3.3.3
-		return "HS256", nil
+		return dsig.HMACWithSHA256, nil
 	case "ecdsa-p256-sha256": // Section 3.3.4
-		return "ES256", nil
+		return dsig.ECDSAWithP256AndSHA256, nil
 	case "ecdsa-p384-sha384": // Section 3.3.5
-		return "ES384", nil
+		return dsig.ECDSAWithP384AndSHA384, nil
 	case "ed25519": // Section 3.3.6
-		return "EdDSA", nil
+		return dsig.EdDSA, nil
 	default:
 		return "", fmt.Errorf("unsupported RFC 9421 algorithm: %s", rfc9421Alg)
 	}
 }
 
-// determineJWSAlgorithmFromKey determines the appropriate JWS algorithm from key material
-// Maps key types to JWS algorithm identifiers for use with jwsbb
-func determineJWSAlgorithmFromKey(key any) (string, error) {
+// determineAlgorithmFromKey determines the appropriate DSIG algorithm from key material
+// Maps key types to DSIG algorithm identifiers
+func determineAlgorithmFromKey(key any) (string, error) {
 	switch k := key.(type) {
 	case *rsa.PrivateKey:
-		// Use PS512 (RSA-PSS with SHA-512) as per RFC 9421 Section 3.3.1
-		return "PS512", nil
+		// Use RSA-PSS with SHA-512 as per RFC 9421 Section 3.3.1
+		return dsig.RSAPSSWithSHA512, nil
 	case *rsa.PublicKey:
-		// Use PS512 (RSA-PSS with SHA-512) for public key verification
-		return "PS512", nil
+		// Use RSA-PSS with SHA-512 for public key verification
+		return dsig.RSAPSSWithSHA512, nil
 	case *ecdsa.PrivateKey:
 		// Determine curve and select appropriate ECDSA algorithm
 		switch k.Curve.Params().Name {
 		case "P-256":
-			// ES256 (ECDSA using P-256 and SHA-256) as per RFC 9421 Section 3.3.4
-			return "ES256", nil
+			// ECDSA using P-256 and SHA-256 as per RFC 9421 Section 3.3.4
+			return dsig.ECDSAWithP256AndSHA256, nil
 		case "P-384":
-			// ES384 (ECDSA using P-384 and SHA-384) as per RFC 9421 Section 3.3.5
-			return "ES384", nil
+			// ECDSA using P-384 and SHA-384 as per RFC 9421 Section 3.3.5
+			return dsig.ECDSAWithP384AndSHA384, nil
 		default:
 			return "", fmt.Errorf("unsupported ECDSA curve: %s", k.Curve.Params().Name)
 		}
@@ -278,24 +278,24 @@ func determineJWSAlgorithmFromKey(key any) (string, error) {
 		// Determine curve and select appropriate ECDSA algorithm for public key
 		switch k.Curve.Params().Name {
 		case "P-256":
-			return "ES256", nil
+			return dsig.ECDSAWithP256AndSHA256, nil
 		case "P-384":
-			return "ES384", nil
+			return dsig.ECDSAWithP384AndSHA384, nil
 		default:
 			return "", fmt.Errorf("unsupported ECDSA curve: %s", k.Curve.Params().Name)
 		}
 	case ed25519.PrivateKey:
 		// EdDSA using Ed25519 as per RFC 9421 Section 3.3.6
-		return "EdDSA", nil
+		return dsig.EdDSA, nil
 	case ed25519.PublicKey:
 		// EdDSA using Ed25519 for public key verification
-		return "EdDSA", nil
+		return dsig.EdDSA, nil
 	case []byte:
-		// HS256 (HMAC using SHA-256) for raw byte keys as per RFC 9421 Section 3.3.3
-		return "HS256", nil
+		// HMAC using SHA-256 for raw byte keys as per RFC 9421 Section 3.3.3
+		return dsig.HMACWithSHA256, nil
 	case string:
-		// HS256 (HMAC using SHA-256) for string keys as per RFC 9421 Section 3.3.3
-		return "HS256", nil
+		// HMAC using SHA-256 for string keys as per RFC 9421 Section 3.3.3
+		return dsig.HMACWithSHA256, nil
 	default:
 		return "", fmt.Errorf("unsupported key type: %T", key)
 	}
@@ -410,18 +410,18 @@ func resolveKey(keyOrResolver any, def *input.Definition) (any, error) {
 }
 
 // verifySignature verifies a single signature using the HTTP_VERIFY primitive from RFC 9421 Section 3.3
-// Uses JWX's jwsbb for cryptographic verification operations
+// Uses DSIG for cryptographic verification operations
 func verifySignature(_ context.Context, signatureBase []byte, signatureBytes []byte, def *input.Definition, key any) error {
-	// Determine the appropriate JWS algorithm, preferring explicit algorithm from Definition
-	algorithm, err := determineJWSAlgorithm(def, key)
+	// Determine the appropriate algorithm, preferring explicit algorithm from Definition
+	algorithm, err := determineAlgorithm(def, key)
 	if err != nil {
-		return fmt.Errorf("failed to determine JWS algorithm: %w", err)
+		return fmt.Errorf("failed to determine algorithm: %w", err)
 	}
 
-	// Use JWX's jwsbb to verify the signature directly
+	// Use DSIG to verify the signature directly
 	// RFC 9421 Section 3.3.7: "the HTTP message's signature base is used as the entire JWS Signing Input"
 	// "The JOSE Header is not used, and the signature base is not first encoded in Base64"
-	err = jwsbb.Verify(key, algorithm, signatureBase, signatureBytes)
+	err = dsig.Verify(key, algorithm, signatureBase, signatureBytes)
 	if err != nil {
 		return fmt.Errorf("cryptographic verification failed with algorithm %s: %w", algorithm, err)
 	}
