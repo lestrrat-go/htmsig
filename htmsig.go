@@ -25,24 +25,23 @@ type KeyResolver interface {
 	ResolveKey(keyID string) (any, error)
 }
 
-func Sign(ctx context.Context, target any, inputValue *input.Value, key any) error {
-	var hdr http.Header
+// SignRequest signs an HTTP request using the provided headers.
+// Request information must be provided in context using component.WithRequestInfo.
+func SignRequest(ctx context.Context, headers http.Header, inputValue *input.Value, key any) error {
+	ctx = component.WithMode(ctx, component.ModeRequest)
+	return signWithContext(ctx, headers, inputValue, key)
+}
 
-	switch t := target.(type) {
-	case *http.Request:
-		ctx = component.WithMode(ctx, component.ModeRequest)
-		ctx = component.WithRequest(ctx, t)
-		hdr = t.Header
-	case *http.Response:
-		ctx = component.WithMode(ctx, component.ModeResponse)
-		ctx = component.WithResponse(ctx, t)
-		if t.Request != nil {
-			ctx = component.WithRequest(ctx, t.Request)
-		}
-		hdr = t.Header
-	default:
-		return fmt.Errorf("unsupported target type %T", target)
-	}
+// SignResponse signs an HTTP response using the provided headers.
+// Response information must be provided in context using component.WithResponseInfo.
+func SignResponse(ctx context.Context, headers http.Header, inputValue *input.Value, key any) error {
+	ctx = component.WithMode(ctx, component.ModeResponse)
+	return signWithContext(ctx, headers, inputValue, key)
+}
+
+
+// signWithContext performs the actual signing using the prepared context and headers.
+func signWithContext(ctx context.Context, hdr http.Header, inputValue *input.Value, key any) error {
 
 	dict := sfv.NewDictionary()
 	for _, def := range inputValue.Definitions() {
@@ -123,56 +122,65 @@ func buildSignatureBase(ctx context.Context, def *input.Definition) ([]byte, err
 	output.WriteString("\"@signature-params\": ")
 
 	// Build the inner list containing the components and their parameters
-	innerList := sfv.NewInnerListBuilder()
+	innerList := sfv.NewInnerList()
 	for _, comp := range def.Components() {
 		sfvComp, err := comp.SFV()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert component %q to SFV: %w", comp.Name(), err)
 		}
-		innerList.Add(sfvComp)
+		if err := innerList.Add(sfvComp); err != nil {
+			return nil, fmt.Errorf("failed to add component to inner list: %w", err)
+		}
 	}
 
 	// Add signature parameters (created, expires, keyid, alg, nonce, tag, etc.)
+	params := innerList.Parameters()
 	if created, ok := def.Created(); ok {
 		createdItem := sfv.BareInteger(created)
-		innerList.Parameter("created", createdItem)
+		if err := params.Set("created", createdItem); err != nil {
+			return nil, fmt.Errorf("failed to set created parameter: %w", err)
+		}
 	}
 
 	if expires, ok := def.Expires(); ok {
 		expiresItem := sfv.BareInteger(expires)
-		innerList.Parameter("expires", expiresItem)
+		if err := params.Set("expires", expiresItem); err != nil {
+			return nil, fmt.Errorf("failed to set expires parameter: %w", err)
+		}
 	}
 
 	if def.KeyID() != "" {
 		keyidItem := sfv.BareString(def.KeyID())
-		innerList.Parameter("keyid", keyidItem)
+		if err := params.Set("keyid", keyidItem); err != nil {
+			return nil, fmt.Errorf("failed to set keyid parameter: %w", err)
+		}
 	}
 
 	if def.Algorithm() != "" {
 		algItem := sfv.BareString(def.Algorithm())
-		innerList.Parameter("alg", algItem)
+		if err := params.Set("alg", algItem); err != nil {
+			return nil, fmt.Errorf("failed to set alg parameter: %w", err)
+		}
 	}
 
 	if nonce, ok := def.Nonce(); ok {
 		nonceItem := sfv.BareString(nonce)
-		innerList.Parameter("nonce", nonceItem)
+		if err := params.Set("nonce", nonceItem); err != nil {
+			return nil, fmt.Errorf("failed to set nonce parameter: %w", err)
+		}
 	}
 
 	if tag, ok := def.Tag(); ok {
 		tagItem := sfv.BareString(tag)
-		innerList.Parameter("tag", tagItem)
-	}
-
-	// Build the inner list
-	builtInnerList, err := innerList.Build()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build inner list: %w", err)
+		if err := params.Set("tag", tagItem); err != nil {
+			return nil, fmt.Errorf("failed to set tag parameter: %w", err)
+		}
 	}
 
 	// Encode the inner list with no parameter spacing (HTTP Message Signature format)
 	encoder := sfv.NewEncoder(&output)
 	encoder.SetParameterSpacing("")
-	if err := encoder.Encode(builtInnerList); err != nil {
+	if err := encoder.Encode(innerList); err != nil {
 		return nil, fmt.Errorf("failed to encode inner list: %w", err)
 	}
 
@@ -293,30 +301,23 @@ func determineJWSAlgorithmFromKey(key any) (string, error) {
 	}
 }
 
-// Verify verifies HTTP message signatures according to RFC 9421 Section 3.2
-// keyOrResolver can be either:
-//   - A raw cryptographic key (e.g., rsa.PublicKey, ed25519.PublicKey, etc.)
-//   - A KeyResolver that can resolve keys by their ID from signature parameters
-func Verify(ctx context.Context, target any, keyOrResolver any) error {
-	var hdr http.Header
+// VerifyRequest verifies HTTP request signatures using the provided headers.
+// Request information must be provided in context using component.WithRequestInfo.
+func VerifyRequest(ctx context.Context, headers http.Header, keyOrResolver any) error {
+	ctx = component.WithMode(ctx, component.ModeRequest)
+	return verifyWithContext(ctx, headers, keyOrResolver)
+}
 
-	// Set up context and extract headers based on target type
-	switch t := target.(type) {
-	case *http.Request:
-		ctx = component.WithMode(ctx, component.ModeRequest)
-		ctx = component.WithRequest(ctx, t)
-		hdr = t.Header
-	case *http.Response:
-		ctx = component.WithMode(ctx, component.ModeResponse)
-		ctx = component.WithResponse(ctx, t)
-		if t.Request != nil {
-			ctx = component.WithRequest(ctx, t.Request)
-		}
-		hdr = t.Header
-	default:
-		return fmt.Errorf("unsupported target type %T", target)
-	}
+// VerifyResponse verifies HTTP response signatures using the provided headers.
+// Response information must be provided in context using component.WithResponseInfo.
+func VerifyResponse(ctx context.Context, headers http.Header, keyOrResolver any) error {
+	ctx = component.WithMode(ctx, component.ModeResponse)
+	return verifyWithContext(ctx, headers, keyOrResolver)
+}
 
+
+// verifyWithContext performs the actual verification using the prepared context and headers.
+func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) error {
 	// Step 1: Parse Signature and Signature-Input fields (RFC 9421 Section 3.2, step 1)
 	signatureInputHeader := hdr.Get(SignatureInputHeader)
 	if signatureInputHeader == "" {

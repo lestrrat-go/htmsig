@@ -5,7 +5,8 @@ go 1.24.4
 require (
 	github.com/lestrrat-go/blackmagic v1.0.4
 	github.com/lestrrat-go/jwx/v3 v3.0.10
-	github.com/lestrrat-go/sfv v0.0.0-20250811221955-1ff7bd33de81
+	github.com/lestrrat-go/option v1.0.1
+	github.com/lestrrat-go/sfv v0.0.0-20250812055001-7c45bde43af8
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -15,7 +16,6 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc/v3 v3.0.0 // indirect
-	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
