@@ -27,6 +27,10 @@ type identVerifierErrorHandler struct{}
 
 func (identVerifierErrorHandler) String() string { return "WithVerifierErrorHandler" }
 
+type identValidateExpires struct{}
+
+func (identValidateExpires) String() string { return "WithValidateExpires" }
+
 type identTransport struct{}
 
 func (identTransport) String() string { return "WithTransport" }
@@ -104,6 +108,12 @@ func WithSkipOnMissing(skip bool) VerifierOption {
 // WithVerifierErrorHandler configures custom error handling.
 func WithVerifierErrorHandler(handler http.Handler) VerifierOption {
 	return option.New(identVerifierErrorHandler{}, handler)
+}
+
+// WithValidateExpires configures whether to validate signature expiration times.
+// When enabled, signatures with expired 'expires' parameters will be rejected.
+func WithValidateExpires(validate bool) VerifierOption {
+	return option.New(identValidateExpires{}, validate)
 }
 
 // TransportOption configures a SigningTransport.

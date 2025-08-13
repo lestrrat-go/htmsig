@@ -2,13 +2,19 @@ package htmsig_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
+	"github.com/lestrrat-go/htmsig/input"
+	htmsighttp "github.com/lestrrat-go/htmsig/http"
 	"github.com/stretchr/testify/require"
 )
 
@@ -476,3 +482,104 @@ func TestServerSideTargetURIVsClientSide(t *testing.T) {
 	require.Equal(t, expectedTargetURI, serverSideValue, "Server-side should match RFC")
 	require.Equal(t, clientSideValue, serverSideValue, "Server-side and client-side should match")
 }
+
+func TestSignatureExpirationChecking(t *testing.T) {
+	// Generate RSA key for testing
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	// Create an HTTP request
+	req, err := http.NewRequest("POST", "https://example.com/test", nil)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Date", "Tue, 20 Apr 2021 02:07:55 GMT")
+
+	// Use a fixed time for deterministic testing
+	fixedTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	staticClock := htmsighttp.FixedClock(fixedTime)
+
+	// Test cases
+	tests := []struct {
+		name            string
+		expiresOffset   time.Duration // offset from now to set expiration
+		validateExpires bool          // whether to enable expiration validation
+		expectError     bool          // whether verification should fail
+	}{
+		{
+			name:            "Valid signature without expiration",
+			expiresOffset:   0, // no expiration set
+			validateExpires: true,
+			expectError:     false,
+		},
+		{
+			name:            "Valid signature with future expiration",
+			expiresOffset:   time.Hour, // expires in 1 hour from fixed time
+			validateExpires: true,
+			expectError:     false,
+		},
+		{
+			name:            "Expired signature with validation enabled",
+			expiresOffset:   -time.Hour, // expired 1 hour before fixed time
+			validateExpires: true,
+			expectError:     true,
+		},
+		{
+			name:            "Expired signature with validation disabled",
+			expiresOffset:   -time.Hour, // expired 1 hour before fixed time
+			validateExpires: false,
+			expectError:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create signature definition
+			builder := input.NewDefinitionBuilder().
+				Label("test-sig").
+				Components(
+					component.Method(),
+					component.TargetURI(),
+					component.New("content-type"),
+					component.New("date"),
+				).
+				KeyID("test-key-id")
+
+			// Set expiration if specified
+			if tt.expiresOffset != 0 {
+				expiresTime := fixedTime.Add(tt.expiresOffset)
+				builder = builder.ExpiresTime(expiresTime)
+			}
+
+			def, err := builder.Build()
+			require.NoError(t, err)
+
+			// Create input value and sign the request
+			inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+			ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
+			err = htmsig.SignRequest(ctx, req.Header, inputValue, privateKey)
+			require.NoError(t, err)
+
+			// Create key resolver - use StaticKeyResolver since we only have one key
+			keyResolver := htmsighttp.StaticKeyResolver(&privateKey.PublicKey)
+
+			// Create verification options
+			var options []htmsig.VerifyOption
+			if tt.validateExpires {
+				options = append(options, htmsig.WithValidateExpires(true))
+			}
+			options = append(options, htmsig.WithClock(staticClock))
+
+			// Verify the signature
+			ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
+			err = htmsig.VerifyRequest(ctx, req.Header, keyResolver, options...)
+
+			if tt.expectError {
+				require.Error(t, err, "Expected verification to fail for expired signature")
+				require.Contains(t, err.Error(), "signature expired", "Error should mention expiration")
+			} else {
+				require.NoError(t, err, "Expected verification to succeed")
+			}
+		})
+	}
+}
+

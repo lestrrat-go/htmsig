@@ -9,17 +9,45 @@ import (
 	"github.com/lestrrat-go/htmsig/component"
 )
 
+// defaultVerificationErrorHandler returns a handler that responds with 401 Unauthorized
+// and includes the error message in the response body.
+var defaultVerificationErrorHandler http.Handler
+
+func init() {
+	defaultVerificationErrorHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := VerificationErrorFromContext(r.Context())
+		errorMsg := "Signature verification failed"
+		if err != nil {
+			errorMsg = err.Error()
+		}
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = fmt.Fprintf(w, "401 Unauthorized: %s\n", errorMsg)
+	})
+}
+
 // VerifyRequest verifies the request signature using the provided context and header.
 // This method is meant to be used in the server-side verification process.
 func (v *Verifier) VerifyRequest(ctx context.Context, req *http.Request) error {
+	if err := v.checkSignatureHeaders(req.Header); err != nil {
+		return err
+	}
+
 	ctx = component.WithMode(ctx, component.ModeRequest)
 	ctx = component.WithRequestInfoFromHTTP(ctx, req)
-	return v.verify(ctx, req.Header)
+
+	options := v.buildVerificationOptions()
+	return htmsig.VerifyRequest(ctx, req.Header, v.keyResolver, options...)
 }
 
 // VerifyResponse verifies the response signature using the provided context and header.
 // This method is meant to be used in the client-side verification process.
 func (v *Verifier) VerifyResponse(ctx context.Context, res *http.Response) error {
+	if err := v.checkSignatureHeaders(res.Header); err != nil {
+		return err
+	}
+
 	ctx = component.WithMode(ctx, component.ModeResponse)
 	ctx = component.WithResponseInfoFromHTTP(ctx, res)
 
@@ -32,11 +60,13 @@ func (v *Verifier) VerifyResponse(ctx context.Context, res *http.Response) error
 		}
 		ctx = component.WithRequestInfoFromHTTP(ctx, res.Request)
 	}
-	return v.verify(ctx, res.Header)
+
+	options := v.buildVerificationOptions()
+	return htmsig.VerifyResponse(ctx, res.Header, v.keyResolver, options...)
 }
 
-func (v *Verifier) verify(ctx context.Context, hdr http.Header) error {
-	// Check if signature headers are present
+// checkSignatureHeaders checks if required signature headers are present
+func (v *Verifier) checkSignatureHeaders(hdr http.Header) error {
 	sigHeader := hdr.Get(htmsig.SignatureHeader)
 	sigInputHeader := hdr.Get(htmsig.SignatureInputHeader)
 
@@ -47,18 +77,19 @@ func (v *Verifier) verify(ctx context.Context, hdr http.Header) error {
 		// No signature present, treat as verification failure
 		return fmt.Errorf("missing signature headers")
 	}
+	return nil
+}
 
-	// Check the context mode to determine which verification function to call
-	mode := component.ModeFromContext(ctx)
-	switch mode {
-	case component.ModeRequest:
-		return htmsig.VerifyRequest(ctx, hdr, v.keyResolver)
-	case component.ModeResponse:
-		return htmsig.VerifyResponse(ctx, hdr, v.keyResolver)
-	default:
-		// Default to request verification for backward compatibility
-		return htmsig.VerifyRequest(ctx, hdr, v.keyResolver)
+// buildVerificationOptions creates verification options based on verifier settings
+func (v *Verifier) buildVerificationOptions() []htmsig.VerifyOption {
+	var options []htmsig.VerifyOption
+	if v.validateExpires {
+		options = append(options, htmsig.WithValidateExpires(true))
 	}
+	if v.clock != nil {
+		options = append(options, htmsig.WithClock(v.clock))
+	}
+	return options
 }
 
 // KeyResolver resolves keys for signature verification.
@@ -116,6 +147,15 @@ type Verifier struct {
 	// If true, verification is skipped and request continues.
 	// If false (default), missing signature is treated as verification failure.
 	skipOnMissing bool
+
+	// validateExpires determines whether to validate signature expiration times.
+	// If true (default), signatures with expired 'expires' parameters will be rejected.
+	// If false, expiration validation is skipped.
+	validateExpires bool
+
+	// clock provides the current time for expiration checking.
+	// If nil, SystemClock is used.
+	clock Clock
 }
 
 // NewVerifier creates a new Verifier with the given key resolver.
@@ -128,9 +168,11 @@ type Verifier struct {
 // verification-only middleware.
 func NewVerifier(resolver KeyResolver, options ...VerifierOption) *Verifier {
 	verifier := &Verifier{
-		keyResolver:  resolver,
-		errorHandler: DefaultVerificationErrorHandler(),
-		skipOnMissing: false,
+		keyResolver:     resolver,
+		errorHandler:    defaultVerificationErrorHandler,
+		skipOnMissing:   false,
+		validateExpires: true,
+		clock:           SystemClock{},
 	}
 
 	for _, option := range options {
@@ -139,24 +181,12 @@ func NewVerifier(resolver KeyResolver, options ...VerifierOption) *Verifier {
 			verifier.skipOnMissing = option.Value().(bool)
 		case identVerifierErrorHandler{}:
 			verifier.errorHandler = option.Value().(http.Handler)
+		case identValidateExpires{}:
+			verifier.validateExpires = option.Value().(bool)
+		case identClock{}:
+			verifier.clock = option.Value().(Clock)
 		}
 	}
 
 	return verifier
-}
-
-// DefaultVerificationErrorHandler returns a handler that responds with 401 Unauthorized
-// and includes the error message in the response body.
-func DefaultVerificationErrorHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := GetError(r)
-		errorMsg := "Signature verification failed"
-		if err != nil {
-			errorMsg = err.Error()
-		}
-
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = fmt.Fprintf(w, "401 Unauthorized: %s\n", errorMsg)
-	})
 }
