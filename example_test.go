@@ -39,7 +39,7 @@ func ExampleSign() {
 			component.New("date"),
 		).
 		KeyID("my-key-id").
-		Algorithm("rsa-pss-sha512").
+		Algorithm(htmsig.AlgorithmRSAPSSSHA512).
 		Build()
 	if err != nil {
 		panic(err)
@@ -89,7 +89,7 @@ func ExampleVerify() {
 			component.New("date"),
 		).
 		KeyID("my-key-id").
-		Algorithm("rsa-pss-sha512").
+		Algorithm(htmsig.AlgorithmRSAPSSSHA512).
 		Build()
 	if err != nil {
 		panic(err)

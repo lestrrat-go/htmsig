@@ -560,7 +560,7 @@ func TestRFC9421_MultipleSignatures(t *testing.T) {
 		Components(component.Method(), component.Authority()).
 		Created(created).
 		KeyID("test-key-rsa-pss").
-		Algorithm("rsa-pss-sha512").
+		Algorithm(htmsig.AlgorithmRSAPSSSHA512).
 		MustBuild()
 
 	ecdsaDef := input.NewDefinitionBuilder().
@@ -568,7 +568,7 @@ func TestRFC9421_MultipleSignatures(t *testing.T) {
 		Components(component.New("date"), component.New("content-type")).
 		Created(created).
 		KeyID("test-key-ecc-p256").
-		Algorithm("ecdsa-p256-sha256").
+		Algorithm(htmsig.AlgorithmECDSAP256SHA256).
 		MustBuild()
 
 	ed25519Def := input.NewDefinitionBuilder().
@@ -576,7 +576,7 @@ func TestRFC9421_MultipleSignatures(t *testing.T) {
 		Components(component.Authority(), component.New("content-length")).
 		Created(created).
 		KeyID("test-key-ed25519").
-		Algorithm("ed25519").
+		Algorithm(htmsig.AlgorithmEd25519).
 		MustBuild()
 
 	hmacDef := input.NewDefinitionBuilder().
@@ -584,7 +584,7 @@ func TestRFC9421_MultipleSignatures(t *testing.T) {
 		Components(component.New("date"), component.Method()).
 		Created(created).
 		KeyID("test-shared-secret").
-		Algorithm("hmac-sha256").
+		Algorithm(htmsig.AlgorithmHMACSHA256).
 		MustBuild()
 
 	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)

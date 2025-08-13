@@ -20,6 +20,16 @@ const (
 	SignatureHeader      = "Signature"
 )
 
+// RFC 9421 Algorithm Names (Section 6.2.2 Initial Contents)
+const (
+	AlgorithmRSAPSSSHA512    = "rsa-pss-sha512"    // Section 3.3.1
+	AlgorithmRSAV15SHA256    = "rsa-v1_5-sha256"   // Section 3.3.2
+	AlgorithmHMACSHA256      = "hmac-sha256"       // Section 3.3.3
+	AlgorithmECDSAP256SHA256 = "ecdsa-p256-sha256" // Section 3.3.4
+	AlgorithmECDSAP384SHA384 = "ecdsa-p384-sha384" // Section 3.3.5
+	AlgorithmEd25519         = "ed25519"           // Section 3.3.6
+)
+
 // KeyResolver interface allows resolving cryptographic keys by their ID
 type KeyResolver interface {
 	ResolveKey(keyID string) (any, error)
@@ -233,17 +243,17 @@ func determineAlgorithm(def *input.Definition, key any) (string, error) {
 func convertRFC9421ToDSIG(rfc9421Alg string) (string, error) {
 	switch rfc9421Alg {
 	// Official RFC 9421 algorithms from Section 6.2.2 Initial Contents
-	case "rsa-pss-sha512": // Section 3.3.1
+	case AlgorithmRSAPSSSHA512: // Section 3.3.1
 		return dsig.RSAPSSWithSHA512, nil
-	case "rsa-v1_5-sha256": // Section 3.3.2
+	case AlgorithmRSAV15SHA256: // Section 3.3.2
 		return dsig.RSAPKCS1v15WithSHA256, nil
-	case "hmac-sha256": // Section 3.3.3
+	case AlgorithmHMACSHA256: // Section 3.3.3
 		return dsig.HMACWithSHA256, nil
-	case "ecdsa-p256-sha256": // Section 3.3.4
+	case AlgorithmECDSAP256SHA256: // Section 3.3.4
 		return dsig.ECDSAWithP256AndSHA256, nil
-	case "ecdsa-p384-sha384": // Section 3.3.5
+	case AlgorithmECDSAP384SHA384: // Section 3.3.5
 		return dsig.ECDSAWithP384AndSHA384, nil
-	case "ed25519": // Section 3.3.6
+	case AlgorithmEd25519: // Section 3.3.6
 		return dsig.EdDSA, nil
 	default:
 		return "", fmt.Errorf("unsupported RFC 9421 algorithm: %s", rfc9421Alg)
