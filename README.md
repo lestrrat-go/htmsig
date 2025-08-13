@@ -161,7 +161,9 @@ func Example_client_server() {
 source: [examples/client_server_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/examples/client_server_example_test.go)
 <!-- END INCLUDE -->
 
-For more detailed examples showing manual signing and verification using the core `htmsig` package, see [manual_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/manual_example_test.go).
+The baove example shows how to use this module for http.Handlers, but you can certainly
+do more low-level processing manually. Please read the documentation for `htmsig` package,
+the `input` package, and `component` package for more details.
 
 ## Supported Algorithms
 
