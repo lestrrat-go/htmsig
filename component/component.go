@@ -63,10 +63,19 @@ func (c Identifier) Parameters() []string {
 	return keys
 }
 
-// WithParameter creates a new component with the parameter addedto the component.
+// WithParameter creates a new component with the parameter added to the component.
 func (c Identifier) WithParameter(key string, value any) Identifier {
-	c.parameters[key] = value
-	return c
+	// Create a new parameter map to avoid modifying the original
+	newParams := make(map[string]any, len(c.parameters)+1)
+	for k, v := range c.parameters {
+		newParams[k] = v
+	}
+	newParams[key] = value
+	
+	return Identifier{
+		name:       c.name,
+		parameters: newParams,
+	}
 }
 
 // HasParameter checks if the component has a specific parameter

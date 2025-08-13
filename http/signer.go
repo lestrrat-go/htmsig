@@ -2,254 +2,196 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/lestrrat-go/htmsig"
 	"github.com/lestrrat-go/htmsig/component"
 	"github.com/lestrrat-go/htmsig/input"
-	"github.com/lestrrat-go/option"
 )
 
-// ResponseSigner signs HTTP responses according to RFC 9421.
-// Use NewResponseSigner to create instances.
-type ResponseSigner = responseSigner
+type Signer interface {
+	SignRequest(context.Context, *http.Request) error
 
-// responseSigner signs HTTP responses according to RFC 9421.
-type responseSigner struct {
-	// Key is the private key used for signing responses.
-	// Can be RSA, ECDSA, Ed25519 private key, or HMAC shared secret.
-	Key any
-
-	// KeyID identifies the key used for signing.
-	KeyID string
-
-	// Algorithm specifies the signature algorithm.
-	// If empty, algorithm will be determined from the key type.
-	Algorithm string
-
-	// Components specifies the components to include in signatures.
-	// If nil, a sensible default set will be used for responses.
-	Components []component.Identifier
-
-	// SignatureLabel is the label for the signature.
-	// If empty, defaults to "sig".
-	SignatureLabel string
-
-	// IncludeCreated adds the created parameter with current timestamp.
-	IncludeCreated bool
-
-	// Tag is an application-specific tag to include in the signature.
-	Tag string
-
-	// ErrorHandler is called when signature generation fails.
-	// If nil, errors are silently ignored.
-	ErrorHandler func(error)
-
-	// FailOnError determines whether to fail the response when signing fails.
-	// If false (default), signing errors are handled by ErrorHandler but don't abort the response.
-	FailOnError bool
-
-	// Clock provides timestamps. If nil, SystemClock is used.
-	Clock Clock
+	// ResponseWriter wraps the http.ResponseWriter to capture response details for signing,
+	// and signs the response before it is sent.
+	ResponseWriter(http.ResponseWriter, *http.Request) http.ResponseWriter
 }
 
-// NewResponseSigner creates a new responseSigner with the given key and key ID.
-// This is the public constructor for creating reusable response signers.
-func NewResponseSigner(key any, keyID string, options ...signerOption) *responseSigner {
-	return newResponseSigner(key, keyID, options...)
+type signerConfig struct {
+	key            any
+	kid            string
+	components     []component.Identifier
+	tag            string
+	label          string
+	alg            string
+	includeCreated bool
+	clock          Clock
+
+	// response writer specific
+	errorHandler http.Handler
 }
 
-// newResponseSigner creates a new responseSigner with the given key and key ID.
-func newResponseSigner(key any, keyID string, options ...signerOption) *responseSigner {
-	signer := &responseSigner{
-		Key:            key,
-		KeyID:          keyID,
-		Components:     DefaultResponseComponents(),
-		SignatureLabel: "sig",
-		IncludeCreated: true,
-	}
-
-	for _, option := range options {
-		switch option.Ident() {
-		case identSignerErrorHandler{}:
-			signer.ErrorHandler = option.Value().(func(error))
-		case identFailOnError{}:
-			signer.FailOnError = option.Value().(bool)
-		case identSignerComponents{}:
-			signer.Components = option.Value().([]component.Identifier)
-		case identSignerSignatureLabel{}:
-			signer.SignatureLabel = option.Value().(string)
-		case identSignerCreated{}:
-			signer.IncludeCreated = option.Value().(bool)
-		case identClockOption{}:
-			signer.Clock = option.Value().(Clock)
-		}
-	}
-
-	return signer
-}
-
-// DefaultResponseComponents returns a sensible default set of components
-// for response signatures.
-func DefaultResponseComponents() []component.Identifier {
-	return []component.Identifier{
-		component.Status(),
-		component.New("content-type"),
-		component.New("content-length"),
-		component.New("date"),
-	}
-}
-
-// createSignatureDefinition creates a signature definition based on the signer configuration.
-func (s *responseSigner) createSignatureDefinition() *input.Definition {
-	builder := input.NewDefinitionBuilder().
-		Label(s.SignatureLabel).
-		KeyID(s.KeyID).
-		Components(s.getComponents()...)
-
-	if s.Algorithm != "" {
-		builder = builder.Algorithm(s.Algorithm)
-	}
-
-	if s.IncludeCreated {
-		clock := s.Clock
-		if clock == nil {
-			clock = SystemClock{}
-		}
-		builder = builder.Created(clock.Now().Unix())
-	}
-
-	if s.Tag != "" {
-		builder = builder.Tag(s.Tag)
-	}
-
-	return builder.MustBuild()
-}
-
-// getComponents returns the components to include in the signature.
-func (s *responseSigner) getComponents() []component.Identifier {
-	if s.Components != nil {
-		return s.Components
-	}
-	return DefaultResponseComponents()
+// SingleKeySingner is a signer that is assigned a single key (and key ID) to sign requests
+// or responses.
+type SingleKeySigner struct {
+	config signerConfig
 }
 
 // signingResponseWriter captures response details needed for signing.
 type signingResponseWriter struct {
-	http.ResponseWriter
-	signer     *responseSigner
+	rw         http.ResponseWriter
 	request    *http.Request
 	written    bool
 	statusCode int
+	config     signerConfig
 }
 
-// newSigningResponseWriter creates a wrapper that captures response details.
-func newSigningResponseWriter(w http.ResponseWriter, r *http.Request, signer *responseSigner) *signingResponseWriter {
-	return &signingResponseWriter{
-		ResponseWriter: w,
-		signer:         signer,
-		request:        r,
-		written:        false,
-		statusCode:     200, // Default status
+func NewSigner(key any, kid string, options ...SignerOption) *SingleKeySigner {
+	var alg string
+	var clock Clock = SystemClock{} // Default clock
+	label := "sig"
+	errh := DefaultSigningErrorHandler()
+	includeCreated := true
+	tag := ""
+	components := []component.Identifier{
+		component.Status(),
+		component.TargetURI().WithParameter("req", true),
+		component.New("content-type"),
+	}
+	for _, option := range options {
+		switch option.Ident() {
+		case identAlgorithm{}:
+			alg = option.Value().(string)
+		case identLabel{}:
+			label = option.Value().(string)
+		case identClock{}:
+			clock = option.Value().(Clock)
+		case identComponents{}:
+			components = option.Value().([]component.Identifier)
+		case identSigningErrorHandler{}:
+			errh = option.Value().(http.Handler)
+		case identIncludeCreated{}:
+			includeCreated = option.Value().(bool)
+		case identTag{}:
+			tag = option.Value().(string)
+		}
+	}
+	return &SingleKeySigner{
+		config: signerConfig{
+			alg:            alg,
+			key:            key,
+			kid:            kid,
+			components:     components,
+			label:          label,
+			includeCreated: includeCreated,
+			tag:            tag,
+			clock:          clock,
+			errorHandler:   errh,
+		},
 	}
 }
 
-// WriteHeader captures the status code and adds signature headers before writing.
-func (w *signingResponseWriter) WriteHeader(statusCode int) {
-	if w.written {
+func (s *SingleKeySigner) SignRequest(ctx context.Context, req *http.Request) error {
+	// Create signature definition
+	def, err := createSignatureDefinition(s.config)
+	if err != nil {
+		return fmt.Errorf("failed to create signature definition: %w", err)
+	}
+
+	// Create input value with the definition
+	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
+
+	ctx = component.WithRequestInfoFromHTTP(ctx, req)
+	return htmsig.SignRequest(ctx, req.Header, inputValue, s.config.key)
+}
+
+// ResponseWriter creates a ResponseWriter that captures response details for signing,
+// and allows the response to be signed before being sent.
+func (s *SingleKeySigner) ResponseWriter(w http.ResponseWriter, r *http.Request) http.ResponseWriter {
+	return &signingResponseWriter{
+		rw:         w,
+		request:    r,
+		statusCode: http.StatusOK, // Default status
+		config:     s.config,
+	}
+}
+
+var signingErrorHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// you can get the root cause of the failure from
+	// err := SigningErrorFromContext(r.Context())
+	// Default error handler simply writes a 401
+	http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+})
+
+func DefaultSigningErrorHandler() http.Handler {
+	return signingErrorHandler
+}
+
+func (s *signingResponseWriter) Header() http.Header {
+	return s.rw.Header()
+}
+
+func (s *signingResponseWriter) WriteHeader(statusCode int) {
+	if s.written {
 		return // Already written
 	}
 
-	w.statusCode = statusCode
-	w.written = true
+	s.statusCode = statusCode
+	s.written = true
 
 	// Generate and add signature headers before writing the response
-	w.addSignatureHeaders()
+	s.addSignatureHeaders()
+	s.rw.WriteHeader(statusCode)
+}
 
-	w.ResponseWriter.WriteHeader(statusCode)
+func (s *signingResponseWriter) Write(data []byte) (int, error) {
+	if !s.written {
+		s.WriteHeader(s.statusCode)
+	}
+	return s.rw.Write(data)
+}
+
+// createSignatureDefinition creates a signature definition based on the signer configuration.
+func createSignatureDefinition(c signerConfig) (*input.Definition, error) {
+	builder := input.NewDefinitionBuilder().
+		Label(c.label).
+		KeyID(c.kid).
+		Components(c.components...)
+
+	if c.alg != "" {
+		builder = builder.Algorithm(c.alg)
+	}
+
+	if c.includeCreated {
+		builder = builder.Created(c.clock.Now().Unix())
+	}
+
+	if c.tag != "" {
+		builder = builder.Tag(c.tag)
+	}
+
+	return builder.Build()
 }
 
 // addSignatureHeaders generates the signature and adds it to the response headers.
 func (w *signingResponseWriter) addSignatureHeaders() {
 	// Create signature definition
-	def := w.signer.createSignatureDefinition()
+	def, err := createSignatureDefinition(w.config)
+	if err != nil {
+		w.config.errorHandler.ServeHTTP(w, w.request.WithContext(WithSigningError(w.request.Context(), err)))
+		return
+	}
 
 	// Create input value with the definition
 	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
 
 	// Prepare context with response information
-	ctx := component.WithResponseInfo(context.Background(), w.Header(), w.statusCode,
+	ctx := component.WithResponseInfo(w.request.Context(), w.Header(), w.statusCode,
 		component.RequestInfoFromHTTP(w.request))
 
 	// Sign the response using the new SignResponse API
-	err := htmsig.SignResponse(ctx, w.Header(), inputValue, w.signer.Key)
-	if err != nil {
-		// Handle signing error based on configuration
-		if w.signer.ErrorHandler != nil {
-			w.signer.ErrorHandler(err)
-		}
-
-		if w.signer.FailOnError {
-			// Fail the response by writing an error status
-			w.ResponseWriter.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		// Otherwise continue with unsigned response
+	if err := htmsig.SignResponse(ctx, w.Header(), inputValue, w.config.key); err != nil {
+		w.config.errorHandler.ServeHTTP(w, w.request.WithContext(WithSigningError(ctx, err)))
 	}
 }
-
-// Write captures that content was written.
-func (w *signingResponseWriter) Write(data []byte) (int, error) {
-	if !w.written {
-		w.WriteHeader(w.statusCode)
-	}
-	return w.ResponseWriter.Write(data)
-}
-
-// signerOption configures a responseSigner.
-type signerOption = option.Interface
-
-// WithSignerErrorHandler configures error handling for signature failures.
-func WithSignerErrorHandler(handler func(error)) signerOption {
-	return option.New(identSignerErrorHandler{}, handler)
-}
-
-type identSignerErrorHandler struct{}
-
-func (identSignerErrorHandler) String() string { return "WithSignerErrorHandler" }
-
-// WithFailOnError configures whether to fail responses on signature errors.
-func WithFailOnError(fail bool) signerOption {
-	return option.New(identFailOnError{}, fail)
-}
-
-type identFailOnError struct{}
-
-func (identFailOnError) String() string { return "WithFailOnError" }
-
-// WithSignerComponents configures the signature components for responses.
-func WithSignerComponents(components ...component.Identifier) signerOption {
-	return option.New(identSignerComponents{}, components)
-}
-
-type identSignerComponents struct{}
-
-func (identSignerComponents) String() string { return "WithSignerComponents" }
-
-// WithSignerSignatureLabel sets the signature label for responses.
-func WithSignerSignatureLabel(label string) signerOption {
-	return option.New(identSignerSignatureLabel{}, label)
-}
-
-type identSignerSignatureLabel struct{}
-
-func (identSignerSignatureLabel) String() string { return "WithSignerSignatureLabel" }
-
-// WithSignerCreated controls whether to include the created parameter for responses.
-func WithSignerCreated(include bool) signerOption {
-	return option.New(identSignerCreated{}, include)
-}
-
-type identSignerCreated struct{}
-
-func (identSignerCreated) String() string { return "WithSignerCreated" }

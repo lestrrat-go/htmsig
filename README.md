@@ -12,226 +12,28 @@ go get github.com/lestrrat-go/htmsig
 
 ## Quick Start
 
-### Basic Request Signing
+### Client/Server Example
 
-<!-- INCLUDE(example_test.go) -->
+The easiest way to get started is using the `http` package for automatic signing and verification:
+
+<!-- INCLUDE(examples/client_server_example_test.go) -->
 ```go
 package htmsig_test
-
-import (
-	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"fmt"
-	"net/http"
-
-	"github.com/lestrrat-go/htmsig"
-	"github.com/lestrrat-go/htmsig/component"
-	"github.com/lestrrat-go/htmsig/input"
-)
-
-// ExampleSign demonstrates how to sign an HTTP request
-func ExampleSign() {
-	// Generate an RSA key pair
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		panic(err)
-	}
-
-	// Create an HTTP request to sign
-	req, err := http.NewRequest(http.MethodPost, "https://example.com/api/data", nil)
-	if err != nil {
-		panic(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Date", "Tue, 20 Apr 2021 02:07:55 GMT")
-
-	// Create signature definition
-	def, err := input.NewDefinitionBuilder().
-		Label("my-signature").
-		Components(
-			component.Method(),
-			component.TargetURI(),
-			component.Authority(),
-			component.New("content-type"),
-			component.New("date"),
-		).
-		KeyID("my-key-id").
-		Algorithm("rsa-pss-sha512").
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	// Create input value containing the signature definition
-	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
-
-	// Sign the request
-	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
-	err = htmsig.SignRequest(ctx, req.Header, inputValue, privateKey)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Signed request has Signature-Input: %t\n", req.Header.Get("Signature-Input") != "")
-	fmt.Printf("Signed request has Signature: %t\n", req.Header.Get("Signature") != "")
-	// Output:
-	// Signed request has Signature-Input: true
-	// Signed request has Signature: true
-}
-
-// ExampleVerify demonstrates how to verify an HTTP request signature
-func ExampleVerify() {
-	// Generate an RSA key pair for the example
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		panic(err)
-	}
-	publicKey := &privateKey.PublicKey
-
-	// Create and sign a request first
-	req, err := http.NewRequest("POST", "https://example.com/api/data", nil)
-	if err != nil {
-		panic(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Date", "Tue, 20 Apr 2021 02:07:55 GMT")
-
-	def, err := input.NewDefinitionBuilder().
-		Label("my-signature").
-		Components(
-			component.Method(),
-			component.TargetURI(),
-			component.Authority(),
-			component.New("content-type"),
-			component.New("date"),
-		).
-		KeyID("my-key-id").
-		Algorithm("rsa-pss-sha512").
-		Build()
-	if err != nil {
-		panic(err)
-	}
-
-	inputValue := input.NewValueBuilder().AddDefinition(def).MustBuild()
-	ctx := component.WithRequestInfoFromHTTP(context.Background(), req)
-	err = htmsig.SignRequest(ctx, req.Header, inputValue, privateKey)
-	if err != nil {
-		panic(err)
-	}
-
-	// Create a key resolver that can resolve keys by ID
-	keyResolver := &exampleKeyResolver{
-		keys: map[string]any{
-			"my-key-id": publicKey,
-		},
-	}
-
-	// Verify the request signature
-	ctx = component.WithRequestInfoFromHTTP(context.Background(), req)
-	err = htmsig.VerifyRequest(ctx, req.Header, keyResolver)
-	if err != nil {
-		fmt.Printf("Verification failed: %v\n", err)
-		return
-	}
-
-	fmt.Println("Signature verification successful")
-	// Output:
-	// Signature verification successful
-}
-
-// exampleKeyResolver is a simple key resolver for the example
-type exampleKeyResolver struct {
-	keys map[string]any
-}
-
-func (r *exampleKeyResolver) ResolveKey(keyID string) (any, error) {
-	key, exists := r.keys[keyID]
-	if !exists {
-		return nil, fmt.Errorf("key %q not found", keyID)
-	}
-	return key, nil
-}
-
-```
-source: [example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/example_test.go)
-<!-- END INCLUDE -->
-
-### HTTP Server with Signature Verification
-
-<!-- INCLUDE(http/http_example_test.go) -->
-```go
-package http_test
 
 import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/htmsig/component"
 	htmsighttp "github.com/lestrrat-go/htmsig/http"
 )
 
-// ExampleWrap demonstrates how to create an HTTP handler with signature verification and response signing.
-func ExampleWrap() {
-	// Use HMAC key for deterministic signatures
-	hmacKey := []byte("test-hmac-secret-key")
-
-	// Create verifier that skips missing signatures for demo
-	verifier := htmsighttp.NewVerifier(
-		&htmsighttp.StaticKeyResolver{Key: hmacKey},
-		htmsighttp.WithSkipOnMissing(true), // Allow unsigned requests for demo
-	)
-
-	// Create the main application handler
-	appHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Date", "Mon, 01 Jan 2024 00:00:00 GMT") // Fixed date for testing
-		_, _ = fmt.Fprint(w, `{"message": "Hello, signed world!"}`)
-	})
-
-	// Create fixed clock for deterministic timestamps
-	fixedTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	clock := htmsighttp.FixedClock(fixedTime)
-
-	// Create response signer with specific components
-	signer := htmsighttp.NewResponseSigner(hmacKey, "server-key-1",
-		htmsighttp.WithSignerComponents(
-			component.Status(),
-			component.New("content-type"),
-			component.New("date"),
-		),
-		htmsighttp.WithSignerSignatureLabel("server-key-1"),
-		htmsighttp.WithClock(clock))
-
-	// Wrap with both verification and signing
-	wrappedHandler := htmsighttp.Wrap(appHandler,
-		htmsighttp.WithVerifier(verifier),
-		htmsighttp.WithSigner(signer))
-
-	// Test the wrapped handler
-	req := httptest.NewRequest("GET", "/api/data", nil)
-	w := httptest.NewRecorder()
-	wrappedHandler.ServeHTTP(w, req)
-
-	fmt.Printf("Status: %d\n", w.Code)
-	fmt.Printf("Content-Type: %s\n", w.Header().Get("Content-Type"))
-	fmt.Printf("Signature: %s\n", w.Header().Get("Signature"))
-	fmt.Printf("Signature-Input: %s\n", w.Header().Get("Signature-Input"))
-	fmt.Printf("Body: %s\n", w.Body.String())
-
-	// Output:
-	// Status: 200
-	// Content-Type: application/json
-	// Signature: server-key-1=:JohOBV+tyheV58LS0h5rT3TfHynbV6bncnEG0jP5vnE=:
-	// Signature-Input: server-key-1=("@status" "content-type" "date");created=1704067200;keyid="server-key-1"
-	// Body: {"message": "Hello, signed world!"}
-}
-
-// ExampleNewClient demonstrates how to create an HTTP client that automatically signs requests
-// and communicates with a server that both verifies incoming signatures and signs responses.
-func ExampleNewClient() {
+// Example demonstrates a complete client/server interaction
+// with HTTP message signatures using the http package.
+func Example() {
 	// Use HMAC key for deterministic signatures
 	hmacKey := []byte("shared-hmac-secret")
 
@@ -239,8 +41,8 @@ func ExampleNewClient() {
 	fixedTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	clock := htmsighttp.FixedClock(fixedTime)
 
-	// Create a response signer for outgoing responses
-	signer := htmsighttp.NewResponseSigner(hmacKey, "server-key",
+	// Create response signer for outgoing responses
+	responseSigner := htmsighttp.NewResponseSigner(hmacKey, "server-key",
 		htmsighttp.WithSignerComponents(
 			component.Status(),
 			component.New("content-type"),
@@ -250,18 +52,18 @@ func ExampleNewClient() {
 	// Create the application handler
 	appHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"status": "success"}`)
+		_, _ = fmt.Fprint(w, `{"message": "Hello, signed world!"}`)
 	})
 
-	// Wrap with just response signing for now (verification can be added separately)
+	// Wrap handler with response signing
 	wrappedHandler := htmsighttp.Wrap(appHandler,
-		htmsighttp.WithSigner(signer))
+		htmsighttp.WithSigner(responseSigner))
 
-	// Create test server with the wrapped handler
+	// Create test server
 	server := httptest.NewServer(wrappedHandler)
 	defer server.Close()
 
-	// Create HTTP client with HMAC signing
+	// Create HTTP client with automatic request signing
 	client := htmsighttp.NewClient(
 		hmacKey,
 		"client-key",
@@ -273,41 +75,29 @@ func ExampleNewClient() {
 		htmsighttp.WithClock(clock))
 
 	// Make a signed request to the server
-	resp, err := client.Get(server.URL + "/api/test")
+	resp, err := client.Post(server.URL+"/api/data", "application/json",
+		strings.NewReader(`{"data": "test"}`))
 	if err != nil {
 		fmt.Printf("Request failed: %v\n", err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Only print if something went wrong
-	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Unexpected status: %d\n", resp.StatusCode)
-		return
-	}
-
-	// Check the actual signature value
-	signature := resp.Header.Get("Signature")
-	expectedSignature := "sig=:yK6Vo4nyKwMLjsL9qPmXo87yb4FAuUT7ZFmo9duC8QY=:"
-	if signature != expectedSignature {
-		fmt.Printf("Unexpected signature: %s\n", signature)
-		return
-	}
-
-	// Check the signature input value
-	signatureInput := resp.Header.Get("Signature-Input")
-	expectedSignatureInput := "sig=(\"@status\" \"content-type\");created=1704067200;keyid=\"server-key\""
-	if signatureInput != expectedSignatureInput {
-		fmt.Printf("Unexpected signature input: %s\n", signatureInput)
-		return
-	}
+	fmt.Printf("Response Status: %d\n", resp.StatusCode)
+	fmt.Printf("Response has Signature: %t\n", resp.Header.Get("Signature") != "")
+	fmt.Printf("Response has Signature-Input: %t\n", resp.Header.Get("Signature-Input") != "")
 
 	// Output:
+	// Response Status: 200
+	// Response has Signature: true
+	// Response has Signature-Input: true
 }
 
 ```
-source: [http/http_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/http/http_example_test.go)
+source: [client_server_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/client_server_example_test.go)
 <!-- END INCLUDE -->
+
+For more detailed examples showing manual signing and verification using the core `htmsig` package, see [manual_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/manual_example_test.go).
 
 ## Supported Algorithms
 
