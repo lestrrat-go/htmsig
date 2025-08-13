@@ -39,10 +39,8 @@ func SignResponse(ctx context.Context, headers http.Header, inputValue *input.Va
 	return signWithContext(ctx, headers, inputValue, key)
 }
 
-
 // signWithContext performs the actual signing using the prepared context and headers.
 func signWithContext(ctx context.Context, hdr http.Header, inputValue *input.Value, key any) error {
-
 	dict := sfv.NewDictionary()
 	for _, def := range inputValue.Definitions() {
 		sigbase, err := buildSignatureBase(ctx, def)
@@ -315,30 +313,29 @@ func VerifyResponse(ctx context.Context, headers http.Header, keyOrResolver any)
 	return verifyWithContext(ctx, headers, keyOrResolver)
 }
 
-
 // verifyWithContext performs the actual verification using the prepared context and headers.
 func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) error {
 	// Step 1: Parse Signature and Signature-Input fields (RFC 9421 Section 3.2, step 1)
 	signatureInputHeader := hdr.Get(SignatureInputHeader)
 	if signatureInputHeader == "" {
-		return fmt.Errorf("missing %s header", SignatureInputHeader)
+		return fmt.Errorf("htmsig.Verify: missing %s header", SignatureInputHeader)
 	}
 
 	signatureHeader := hdr.Get(SignatureHeader)
 	if signatureHeader == "" {
-		return fmt.Errorf("missing %s header", SignatureHeader)
+		return fmt.Errorf("htmsig.Verify: missing %s header", SignatureHeader)
 	}
 
 	// Parse the Signature-Input header using the input package
 	inputValue, err := input.Parse([]byte(signatureInputHeader))
 	if err != nil {
-		return fmt.Errorf("failed to parse %s header: %w", SignatureInputHeader, err)
+		return fmt.Errorf("htmsig.Verify: failed to parse %s header: %w", SignatureInputHeader, err)
 	}
 
 	// Parse the Signature field to get signature values
 	parsedSignature, err := sfv.ParseDictionary([]byte(signatureHeader))
 	if err != nil {
-		return fmt.Errorf("failed to parse %s header: %w", SignatureHeader, err)
+		return fmt.Errorf("htmsig.Verify: failed to parse %s header: %w", SignatureHeader, err)
 	}
 
 	// Step 1.1: Determine which signatures to verify
@@ -349,13 +346,13 @@ func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) 
 		// Step 1.2: Check if signature has corresponding entry (RFC 9421 Section 3.2, step 1.2)
 		var signatureEntry any
 		if err := parsedSignature.GetValue(label, &signatureEntry); err != nil {
-			return fmt.Errorf("signature label %q not found in %s header: %w", label, SignatureHeader, err)
+			return fmt.Errorf("htmsig.Verify: signature label %q not found in %s header: %w", label, SignatureHeader, err)
 		}
 
 		// Resolve the key for this signature
 		key, err := resolveKey(keyOrResolver, def)
 		if err != nil {
-			return fmt.Errorf("failed to resolve key for label %q: %w", label, err)
+			return fmt.Errorf("htmsig.Verify: failed to resolve key for label %q: %w", label, err)
 		}
 
 		// Step 3: Extract the signature value (RFC 9421 Section 3.2, step 3)
@@ -365,28 +362,28 @@ func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) 
 		// Handle both BareItem and Item types
 		if bareItem, ok := signatureEntry.(sfv.BareItem); ok {
 			if bareItem.Type() != sfv.ByteSequenceType {
-				return fmt.Errorf("signature entry for label %q must be a byte sequence, got type %d", label, bareItem.Type())
+				return fmt.Errorf("htmsig.Verify: signature entry for label %q must be a byte sequence, got type %d", label, bareItem.Type())
 			}
 			if err := bareItem.GetValue(&signatureBytes); err != nil {
-				return fmt.Errorf("failed to extract signature bytes for label %q: %w", label, err)
+				return fmt.Errorf("htmsig.Verify: failed to extract signature bytes for label %q: %w", label, err)
 			}
 		} else if item, ok := signatureEntry.(sfv.Item); ok {
 			if err := item.GetValue(&signatureBytes); err != nil {
-				return fmt.Errorf("failed to extract signature bytes for label %q: %w", label, err)
+				return fmt.Errorf("htmsig.Verify: failed to extract signature bytes for label %q: %w", label, err)
 			}
 		} else {
-			return fmt.Errorf("signature entry for label %q must be a BareItem or Item, got %T", label, signatureEntry)
+			return fmt.Errorf("htmsig.Verify: ignature entry for label %q must be a BareItem or Item, got %T", label, signatureEntry)
 		}
 
 		// Step 7: Recreate the signature base (RFC 9421 Section 3.2, step 7)
 		signatureBase, err := buildSignatureBase(ctx, def)
 		if err != nil {
-			return fmt.Errorf("failed to recreate signature base for label %q: %w", label, err)
+			return fmt.Errorf("htmsig.Verify: failed to recreate signature base for label %q: %w", label, err)
 		}
 
 		// Step 8: Verify the signature using HTTP_VERIFY (RFC 9421 Section 3.2, step 8)
 		if err := verifySignature(ctx, signatureBase, signatureBytes, def, key); err != nil {
-			return fmt.Errorf("signature verification failed for label %q: %w", label, err)
+			return fmt.Errorf("htmsig.Verify: signature verification failed for label %q: %w", label, err)
 		}
 	}
 
@@ -423,7 +420,7 @@ func verifySignature(_ context.Context, signatureBase []byte, signatureBytes []b
 	// "The JOSE Header is not used, and the signature base is not first encoded in Base64"
 	err = dsig.Verify(key, algorithm, signatureBase, signatureBytes)
 	if err != nil {
-		return fmt.Errorf("cryptographic verification failed with algorithm %s: %w", algorithm, err)
+		return fmt.Errorf("verification failed with algorithm %s: %w", algorithm, err)
 	}
 
 	return nil

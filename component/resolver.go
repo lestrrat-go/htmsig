@@ -30,7 +30,7 @@ type RequestInfo struct {
 	TargetURI string
 }
 
-// ResponseInfo contains the discrete components needed for response signature resolution  
+// ResponseInfo contains the discrete components needed for response signature resolution
 type ResponseInfo struct {
 	Headers    http.Header
 	StatusCode int
@@ -50,7 +50,6 @@ func ModeFromContext(ctx context.Context) Mode {
 	}
 	return mode
 }
-
 
 // WithRequestInfo adds request information to the context using discrete values
 func WithRequestInfo(ctx context.Context, headers http.Header, method, scheme, authority, path, rawQuery, targetURI string) context.Context {
@@ -91,15 +90,52 @@ func RequestInfoFromHTTP(req *http.Request) *RequestInfo {
 	if req == nil || req.URL == nil {
 		return nil
 	}
-	
+
+	// Determine scheme for both client and server-side requests
+	scheme := req.URL.Scheme
+	if scheme == "" {
+		// For server-side requests, determine scheme from TLS
+		if req.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+
+	// Determine authority for both client and server-side requests
+	authority := req.URL.Host
+	if authority == "" {
+		// For server-side requests, use Host header
+		authority = req.Host
+	}
+
+	// Derive the target URI according to RFC 9421 Section 2.2.2
+	// "assembled from all available URI components, including the authority"
+	// Use EscapedPath() to preserve original percent-encoding
+	escapedPath := req.URL.EscapedPath()
+	// RFC 3986: Empty path in absolute URI should be treated as "/"
+	if escapedPath == "" {
+		escapedPath = "/"
+	}
+	targetURI := scheme + "://" + authority + escapedPath
+	if req.URL.RawQuery != "" {
+		targetURI += "?" + req.URL.RawQuery
+	}
+
+	// Normalize path for consistency
+	path := req.URL.Path
+	if path == "" {
+		path = "/"
+	}
+
 	return &RequestInfo{
 		Headers:   req.Header,
 		Method:    req.Method,
-		Scheme:    req.URL.Scheme,
-		Authority: req.URL.Host,
-		Path:      req.URL.Path,
+		Scheme:    scheme,
+		Authority: authority,
+		Path:      path,
 		RawQuery:  req.URL.RawQuery,
-		TargetURI: req.URL.String(),
+		TargetURI: targetURI,
 	}
 }
 
@@ -119,12 +155,12 @@ func ResponseInfoFromHTTP(resp *http.Response) *ResponseInfo {
 	if resp == nil {
 		return nil
 	}
-	
+
 	var requestInfo *RequestInfo
 	if resp.Request != nil {
 		requestInfo = RequestInfoFromHTTP(resp.Request)
 	}
-	
+
 	return &ResponseInfo{
 		Headers:    resp.Header,
 		StatusCode: resp.StatusCode,
@@ -193,13 +229,13 @@ func resolveRequestDerivedComponentFromInfo(ctx context.Context, comp Identifier
 		if err := comp.GetParameter("name", &paramName); err != nil {
 			return "", fmt.Errorf("@query-param requires 'name' parameter: %w", err)
 		}
-		
+
 		// Parse query string to extract parameter
 		queryValues, err := url.ParseQuery(reqInfo.RawQuery)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse query: %w", err)
 		}
-		
+
 		values := queryValues[paramName]
 		if len(values) == 0 {
 			return "", fmt.Errorf("query parameter %q not found", paramName)
@@ -209,7 +245,6 @@ func resolveRequestDerivedComponentFromInfo(ctx context.Context, comp Identifier
 		return "", fmt.Errorf("unknown derived component: %s", comp.name)
 	}
 }
-
 
 func resolveResponse(ctx context.Context, comp Identifier) (string, error) {
 	respInfo, ok := ResponseInfoFromContext(ctx)
@@ -226,14 +261,18 @@ func resolveResponse(ctx context.Context, comp Identifier) (string, error) {
 
 func resolveResponseDerivedComponentFromInfo(ctx context.Context, comp Identifier, respInfo *ResponseInfo) (string, error) {
 	switch comp.name {
-	case "@method", "@scheme", "@authority", "@path", "@query":
-		// Make sure that the ;req parameter is set
+	case "@method", "@scheme", "@authority", "@path", "@query", "@target-uri":
+		// Make sure that the ;req parameter is set and true
+		if !comp.HasParameter("req") {
+			return "", fmt.Errorf("missing 'req' parameter for %q component in response context", comp.name)
+		}
+
 		var req bool
 		if err := comp.GetParameter("req", &req); err != nil {
-			return "", fmt.Errorf("missing 'req' parameter for %q component", comp.name)
+			return "", fmt.Errorf("failed to get 'req' parameter for %q component: %w", comp.name, err)
 		}
 		if !req {
-			return "", fmt.Errorf("'req' parameter must be true for %q component", comp.name)
+			return "", fmt.Errorf("'req' parameter must be true for %q component in response context", comp.name)
 		}
 
 		if respInfo.Request == nil {
@@ -246,7 +285,6 @@ func resolveResponseDerivedComponentFromInfo(ctx context.Context, comp Identifie
 		return "", fmt.Errorf("unknown derived component: %s", comp.name)
 	}
 }
-
 
 func resolveHeader(_ context.Context, comp Identifier, hdr http.Header) (string, error) {
 	// Get header values (case-insensitive)
@@ -267,4 +305,3 @@ func resolveHeader(_ context.Context, comp Identifier, hdr http.Header) (string,
 	// Return the first value (RFC 9421 doesn't specify multiple values handling)
 	return values[0], nil
 }
-
