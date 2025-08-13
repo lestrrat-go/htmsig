@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/lestrrat-go/dsig"
 	"github.com/lestrrat-go/htmsig/component"
@@ -34,6 +35,7 @@ const (
 type KeyResolver interface {
 	ResolveKey(keyID string) (any, error)
 }
+
 
 // SignRequest signs an HTTP request using the provided headers.
 // Request information must be provided in context using component.WithRequestInfo.
@@ -311,20 +313,31 @@ func determineAlgorithmFromKey(key any) (string, error) {
 
 // VerifyRequest verifies HTTP request signatures using the provided headers.
 // Request information must be provided in context using component.WithRequestInfo.
-func VerifyRequest(ctx context.Context, headers http.Header, keyOrResolver any) error {
+func VerifyRequest(ctx context.Context, headers http.Header, keyOrResolver any, options ...VerifyOption) error {
 	ctx = component.WithMode(ctx, component.ModeRequest)
-	return verifyWithContext(ctx, headers, keyOrResolver)
+	return verifyWithContext(ctx, headers, keyOrResolver, options...)
 }
 
 // VerifyResponse verifies HTTP response signatures using the provided headers.
 // Response information must be provided in context using component.WithResponseInfo.
-func VerifyResponse(ctx context.Context, headers http.Header, keyOrResolver any) error {
+func VerifyResponse(ctx context.Context, headers http.Header, keyOrResolver any, options ...VerifyOption) error {
 	ctx = component.WithMode(ctx, component.ModeResponse)
-	return verifyWithContext(ctx, headers, keyOrResolver)
+	return verifyWithContext(ctx, headers, keyOrResolver, options...)
 }
 
 // verifyWithContext performs the actual verification using the prepared context and headers.
-func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) error {
+func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any, options ...VerifyOption) error {
+	// Process options
+	var validateExpires bool
+	var clock Clock = SystemClock{}
+	for _, opt := range options {
+		switch opt.Ident() {
+		case identValidateExpires{}:
+			validateExpires = opt.Value().(bool)
+		case identClock{}:
+			clock = opt.Value().(Clock)
+		}
+	}
 	// Step 1: Parse Signature and Signature-Input fields (RFC 9421 Section 3.2, step 1)
 	signatureInputHeader := hdr.Get(SignatureInputHeader)
 	if signatureInputHeader == "" {
@@ -365,6 +378,13 @@ func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) 
 			return fmt.Errorf("htmsig.Verify: failed to resolve key for label %q: %w", label, err)
 		}
 
+		// Validate signature expiration if configured
+		if validateExpires {
+			if err := validateSignatureExpiration(clock, def); err != nil {
+				return fmt.Errorf("htmsig.Verify: signature expired for label %q: %w", label, err)
+			}
+		}
+
 		// Step 3: Extract the signature value (RFC 9421 Section 3.2, step 3)
 		// The signature must be a byte sequence (RFC 9421 Section 3.2)
 		var signatureBytes []byte
@@ -395,6 +415,24 @@ func verifyWithContext(ctx context.Context, hdr http.Header, keyOrResolver any) 
 		if err := verifySignature(ctx, signatureBase, signatureBytes, def, key); err != nil {
 			return fmt.Errorf("htmsig.Verify: signature verification failed for label %q: %w", label, err)
 		}
+	}
+
+	return nil
+}
+
+// validateSignatureExpiration validates if a signature has expired based on its expires parameter
+func validateSignatureExpiration(clock Clock, def *input.Definition) error {
+	// Check if the signature has an expires parameter
+	expiresTimestamp, hasExpires := def.Expires()
+	if !hasExpires {
+		return nil // No expiration time set, signature doesn't expire
+	}
+
+	// Check if the signature has expired
+	now := clock.Now()
+	expiresTime := time.Unix(expiresTimestamp, 0)
+	if now.After(expiresTime) {
+		return fmt.Errorf("signature expired at %v (current time: %v)", expiresTime, now)
 	}
 
 	return nil
