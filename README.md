@@ -192,7 +192,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Related Projects
 
-- [github.com/lestrrat-go/sfv](https://github.com/lestrrat-go/sfv) - Structured Field Values (RFC 8941)
+- [github.com/lestrrat-go/sfv](https://github.com/lestrrat-go/sfv) - Structured Field Values (RFC 9561)
 - [github.com/lestrrat-go/dsig](https://github.com/lestrrat-go/dsig) - Digital Signatures for Go
 
 ## References
