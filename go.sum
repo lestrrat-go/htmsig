@@ -7,12 +7,16 @@ github.com/lestrrat-go/dsig v0.0.0-20250811215124-541f079dd525 h1:rColmRfuXL89rj
 github.com/lestrrat-go/dsig v0.0.0-20250811215124-541f079dd525/go.mod h1:dEgoOYYEJvW6XGbLasr8TFcAxoWrKlbQvmJgCR0qkDo=
 github.com/lestrrat-go/dsig v0.0.0-20250815061604-76113d026db6 h1:mkNdrVcTwNMJ+J2dd1bAA3V2FfBr9sPCE3GR6BXYyYg=
 github.com/lestrrat-go/dsig v0.0.0-20250815061604-76113d026db6/go.mod h1:dEgoOYYEJvW6XGbLasr8TFcAxoWrKlbQvmJgCR0qkDo=
+github.com/lestrrat-go/dsig v1.0.0 h1:OE09s2r9Z81kxzJYRn07TFM9XA4akrUdoMwr0L8xj38=
+github.com/lestrrat-go/dsig v1.0.0/go.mod h1:dEgoOYYEJvW6XGbLasr8TFcAxoWrKlbQvmJgCR0qkDo=
 github.com/lestrrat-go/option v1.0.1 h1:oAzP2fvZGQKWkvHa1/SAcFolBEca1oN+mQ7eooNBEYU=
 github.com/lestrrat-go/option v1.0.1/go.mod h1:5ZHFbivi4xwXxhxY9XHDe2FHo6/Z7WWmtT7T5nBBp3I=
 github.com/lestrrat-go/sfv v0.0.0-20250812055001-7c45bde43af8 h1:S2y/eNSgmIVlg3H/xrvEJKRt/ap041le3khSigbBudA=
 github.com/lestrrat-go/sfv v0.0.0-20250812055001-7c45bde43af8/go.mod h1:vuz+hqEIxrAN4liZnvbmAoggJm33TayPqYTwX1xssXQ=
 github.com/lestrrat-go/sfv v0.0.0-20250815040540-270b651e3650 h1:m3DSd8xKV/m+07bfjfVbOR7Cs6NUKx7pYBt6IpHbf8w=
 github.com/lestrrat-go/sfv v0.0.0-20250815040540-270b651e3650/go.mod h1:wawOORrbzB4Vh0QT7WtbWEbMuTbjS8OPxum1wZAYCiQ=
+github.com/lestrrat-go/sfv v1.0.0 h1:+/VOs7lhUWAwNIklow4kPYlit0fPBC6HsF+GHKXrhGM=
+github.com/lestrrat-go/sfv v1.0.0/go.mod h1:wawOORrbzB4Vh0QT7WtbWEbMuTbjS8OPxum1wZAYCiQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
