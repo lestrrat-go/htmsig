@@ -1,6 +1,6 @@
 # htmsig - RFC 9421 HTTP Message Signatures for Go
 
-![Build Status](https://github.com/lestrrat-go/htmsig/workflows/CI/badge.svg) [![Go Reference](https://pkg.go.dev/badge/github.com/lestrrat-go/htmsig.svg)](https://pkg.go.dev/github.com/lestrrat-go/htmsig) [![codecov.io](https://codecov.io/github/lestrrat-go/htmsig/coverage.svg?branch=main)](https://codecov.io/github/lestrrat-go/htmsig?branch=main)
+![Build Status](https://github.com/lestrrat-go/htmsig/workflows/CI/badge.svg) [![Go Reference](https://pkg.go.dev/badge/github.com/lestrrat-go/htmsig.svg)](https://pkg.go.dev/github.com/lestrrat-go/htmsig) [![codecov.io](https://codecov.io/github/lestrrat-go/htmsig/coverage.svg?branch=v1)](https://codecov.io/github/lestrrat-go/htmsig?branch=v1)
 
 A complete Go implementation of [RFC 9421: HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421.html), providing cryptographic signing and verification for HTTP requests and responses.
 
@@ -158,7 +158,7 @@ func Example_client_server() {
   // Output:
 }
 ```
-source: [examples/client_server_example_test.go](https://github.com/lestrrat-go/htmsig/blob/main/examples/client_server_example_test.go)
+source: [examples/client_server_example_test.go](https://github.com/lestrrat-go/htmsig/blob/v1/examples/client_server_example_test.go)
 <!-- END INCLUDE -->
 
 The baove example shows how to use this module for http.Handlers, but you can certainly
